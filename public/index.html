@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SAP 供应商协同门户" />
+    <title>供应商协同台 · SAP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="rail" aria-label="主导航">
+        <div class="brand"><span class="brand-mark">S</span><span>供应商<br/>协同台</span></div>
+        <nav id="navigation" class="navigation"></nav>
+        <div class="rail-foot"><span class="pulse"></span> SAP OData 实时连接</div>
+      </aside>
+      <section class="workspace">
+        <header class="topbar">
+          <div><p class="eyebrow">SUPPLIER OPERATIONS / LIVE</p><h1 id="pageTitle">业务总览</h1></div>
+          <div class="identity"><span class="identity-dot"></span><div><small>当前数据范围</small><strong id="vendorScope">正在校验</strong></div></div>
+        </header>
+        <section class="status-strip" id="statusStrip" aria-live="polite">正在连接 Portal 服务…</section>
+        <section id="dashboard" class="dashboard">
+          <article class="intro-card"><p class="eyebrow">今日协同焦点</p><h2>先确认承诺，再让数据自己说话。</h2><p>所有数据由 SAP PE/ES 标准 OData 实时读取；浏览器不会接触 SAP 凭据。</p><div class="rule"></div><p class="muted">选择左侧模块开始查询。未配置凭据时，系统只展示配置状态，不会伪造业务数据。</p></article>
+          <article class="principle-card"><span class="seal">01</span><h2>无数据库架构</h2><p>Portal 不保存供应商业务数据、密码或权限表。身份由 IAM 承担，业务事实留在 SAP。</p></article>
+          <article class="principle-card"><span class="seal">02</span><h2>范围先于查询</h2><p>每次 OData 请求都由服务端注入供应商范围；前端筛选条件不能扩大数据权限。</p></article>
+        </section>
+        <section id="resourceView" class="resource-view" hidden>
+          <div class="query-bar"><label><span>检索</span><input id="searchInput" placeholder="按单号或关键字过滤" autocomplete="off" /></label><button id="refreshButton" class="primary">刷新 SAP 数据</button></div>
+          <div class="data-caption"><span id="resourceDescription"></span><span id="retrievedAt"></span></div>
+          <div id="tableWrap" class="table-wrap"><div class="empty">点击“刷新 SAP 数据”加载实时记录。</div></div>
+        </section>
+      </section>
+    </main>
+    <template id="navTemplate"><button class="nav-item" type="button"><span class="nav-code"></span><span class="nav-label"></span></button></template>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

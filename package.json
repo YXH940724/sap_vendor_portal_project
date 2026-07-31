@@ -1,0 +1,15 @@
+{
+  "name": "sap-vendor-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "无数据库的 SAP 供应商协同 Portal",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch server.mjs",
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
