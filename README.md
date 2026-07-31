@@ -1,0 +1,2 @@
+# sap_vendor_portal_project
+轻量级供应商Portal功能界面
