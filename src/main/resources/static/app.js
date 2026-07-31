@@ -48,6 +48,7 @@ document.querySelectorAll('[data-jump]').forEach((button) => button.addEventList
 $('#backToOverview').addEventListener('click', () => selectResource('overview', false));
 $('#refreshButton').addEventListener('click', loadCurrent); searchInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadCurrent(); });
 $('#menuButton').addEventListener('click', () => document.querySelector('.app-frame').classList.toggle('mobile-nav-open'));
+$('#exportButton').addEventListener('click', exportCurrentRecords);
 $('#utilityDate').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
 createAsnButton.addEventListener('click', openAsnModal); $('#closeDrawer').addEventListener('click', closeDrawer); $('#closeAsnModal').addEventListener('click', closeAsnModal); $('#cancelAsn').addEventListener('click', closeAsnModal); $('#addAsnLine').addEventListener('click', () => addAsnLine()); $('#asnForm').addEventListener('submit', submitAsn);
 
@@ -68,7 +69,7 @@ function selectResource(id, shouldLoad = true) {
   const isOverview = resource.type === 'overview'; dashboard.hidden = !isOverview; resourceView.hidden = isOverview;
   if (isOverview) return;
   pageTitle.textContent = resource.label; resourceDescription.textContent = resource.description; $('#resourceEyebrow').textContent = resource.type === 'analytics' ? 'PURCHASE EXECUTION ANALYTICS' : 'LIVE SAP QUERY';
-  const isAnalytics = resource.type === 'analytics'; queryPanel.hidden = isAnalytics; filterPanel.hidden = isAnalytics; $('.data-bar').hidden = isAnalytics; tableWrap.hidden = isAnalytics; analyticsView.hidden = !isAnalytics; createAsnButton.hidden = id !== 'asns';
+  const isAnalytics = resource.type === 'analytics'; queryPanel.hidden = isAnalytics; filterPanel.hidden = isAnalytics; $('.data-bar').hidden = isAnalytics; tableWrap.hidden = isAnalytics; analyticsView.hidden = !isAnalytics; createAsnButton.hidden = id !== 'asns'; $('#exportButton').hidden = isAnalytics;
   if (isAnalytics) { if (shouldLoad) loadDashboard(); } else { renderFilters(id); retrievedAt.textContent = '尚未读取 SAP 数据'; dataCount.textContent = ''; tableWrap.innerHTML = emptyState('准备读取实时业务数据', '设置筛选条件后点击“刷新数据”开始查询。'); if (shouldLoad) loadCurrent(); }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -113,6 +114,14 @@ function renderDocumentTable(records, resource) {
   tableWrap.innerHTML = `<table class="document-table"><thead><tr>${header}<th></th></tr></thead><tbody>${rows}</tbody></table><div class="table-footer"><span>共 ${records.length} 条记录</span><div class="pagination"><button type="button" data-page="${pageIndex - 1}" ${pageIndex === 1 ? 'disabled' : ''}>←</button><b>${pageIndex}</b><span>/ ${totalPages}</span><button type="button" data-page="${pageIndex + 1}" ${pageIndex === totalPages ? 'disabled' : ''}>→</button></div></div>`;
   tableWrap.querySelectorAll('tbody tr').forEach((row) => { const open = () => showDetail(records[Number(row.dataset.index)], resource); row.addEventListener('click', open); row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); }); });
   tableWrap.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { pageIndex = Number(button.dataset.page); renderDocumentTable(records, resource); }));
+}
+function exportCurrentRecords() {
+  if (!currentRecords.length) { dataCount.textContent = '暂无可导出的记录，请先刷新数据。'; return; }
+  const keys = selectColumns(currentRecords, current);
+  const quote = (value) => `"${String(formatValue(value)).replaceAll('"', '""')}"`;
+  const csv = `\ufeff${keys.map((key) => quote(labelFor(key))).join(',')}\n${currentRecords.map((record) => keys.map((key) => quote(record[key])).join(',')).join('\n')}`;
+  const file = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(file); const link = document.createElement('a');
+  link.href = url; link.download = `${resources.find((item) => item.id === current).label}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
 }
 function selectColumns(records, resourceId) { const preferred = { purchaseOrders: ['PurchaseOrder', 'PurchaseOrderItem', 'Supplier', 'PurchaseOrderDate', 'DeliveryDate', 'PurchaseOrderStatus'], materialDocuments: ['MaterialDocument', 'MaterialDocumentItem', 'Material', 'PostingDate', 'GoodsMovementType', 'QuantityInEntryUnit'], asns: ['InbDelivery', 'PurchaseOrder', 'PlannedDeliveryDate', 'OverallStatus'], invoices: ['SupplierInvoice', 'PurchaseOrder', 'DocumentDate', 'SupplierInvoiceStatus', 'InvoiceGrossAmount'] }[resourceId] || []; const present = preferred.filter((key) => records.some((record) => record[key] !== undefined)); return (present.length ? present : [...new Set(records.flatMap((record) => Object.keys(record)))]).slice(0, 7); }
 function showDetail(record, resource) {
