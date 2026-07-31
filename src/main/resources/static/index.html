@@ -3,89 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="SAP 供应商协同门户" />
-    <title>协同控制台 · SAP Supplier Portal</title>
-    <link rel="stylesheet" href="/styles.css" />
-    <link rel="stylesheet" href="/styles-v2.css" />
+    <meta name="description" content="SAP 供应商协同控制台" />
+    <title>SAP 供应商协同控制台</title>
+    <link rel="stylesheet" href="/styles-v4.css" />
   </head>
   <body>
-    <div class="app-frame">
-      <aside class="sidebar" aria-label="主导航">
-        <a class="brand" href="#overview" aria-label="供应商协同控制台首页">
-          <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="brand-copy">供应商<br /><b>协同控制台</b></span>
-        </a>
-        <nav id="navigation" class="navigation"></nav>
-        <div class="sidebar-footer">
-          <span class="live-dot"></span>
-          <div><b>SAP 实时数据</b><small id="connectionLabel">正在检查连接</small></div>
-        </div>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#/dashboard" aria-label="供应商协同控制台首页"><span class="brand-logo">▱</span><span><b>供应商协同控制台</b><small>SAP Supplier Portal</small></span></a>
+        <nav class="sidebar-nav" aria-label="主导航">
+          <div class="nav-group"><p>概览</p><button class="nav-item" data-route="dashboard"><i>▦</i>工作台</button><button class="nav-item" data-route="analytics"><i>▥</i>数据看板</button></div>
+          <div class="nav-group"><p>业务协同</p><button class="nav-item" data-route="purchaseOrders"><i>▤</i>采购订单</button><button class="nav-item" data-route="asns"><i>↗</i>ASN / 发运</button><button class="nav-item" data-route="materialDocuments"><i>▣</i>收货凭证</button><button class="nav-item" data-route="invoices"><i>▭</i>结算对账</button></div>
+          <div class="nav-group"><p>基础数据</p><button class="nav-item" data-route="suppliers"><i>♧</i>供应商资料</button></div>
+        </nav>
+        <div class="sidebar-footer"><span class="live-dot"></span><span>SAP 实时数据 · <b id="connectionLabel">检查中</b></span><small>v2.0 · S/4HANA</small></div>
       </aside>
-
-      <main class="main-content">
-        <header class="utility-bar">
-          <button id="menuButton" class="menu-button" type="button" aria-label="展开导航"><span></span><span></span></button>
-          <div class="utility-context"><span>供应商工作空间</span><em>·</em><span id="utilityDate">今天</span></div>
-          <div class="utility-actions">
-            <button class="icon-button" type="button" aria-label="通知"><span aria-hidden="true">◌</span><i></i></button>
-            <div class="account"><span class="avatar">V</span><span><b>供应商用户</b><small id="vendorScope">范围校验中</small></span><span class="chevron">⌄</span></div>
-          </div>
-        </header>
-
-        <section class="page-shell">
-          <section id="dashboard" class="dashboard-page">
-            <section class="desk-hero" aria-label="今日协同待办">
-              <div class="hero-copy"><p class="section-kicker">SUPPLIER OPERATIONS DESK</p><h1>今天，优先处理什么？</h1><p>早上好，供应商伙伴。围绕订单、发运、收货和结算推进今天的协同工作。</p></div>
-              <div class="hero-summary"><span>待处理事项</span><b>08</b><small>需要你的关注</small></div>
-              <div id="statusStrip" class="system-status" aria-live="polite"><span></span>正在连接 Portal 服务</div>
-              <div class="flow-ribbon" aria-label="供应链协同链路">
-                <div class="flow-title"><span class="flow-glyph">↗</span><span><b>采购执行进度</b><small>每一环均通过 SAP OData 实时读取</small></span></div>
-              <div class="flow-steps">
-                <button class="flow-step active" type="button" data-jump="purchaseOrders"><span>01</span><b>订单确认</b><small>查看变更与交期</small></button>
-                <button class="flow-step" type="button" data-jump="purchaseOrders"><span>02</span><b>备货排程</b><small>确认交付计划</small></button>
-                <button class="flow-step" type="button" data-jump="asns"><span>03</span><b>发运通知</b><small>创建与追踪 ASN</small></button>
-                <button class="flow-step" type="button" data-jump="materialDocuments"><span>04</span><b>收货确认</b><small>核验物料凭证</small></button>
-                <button class="flow-step" type="button" data-jump="invoices"><span>05</span><b>对账结算</b><small>核对发票状态</small></button>
-              </div>
-              </div>
-            </section>
-
-            <section class="workspace-grid">
-              <article class="work-queue panel">
-                <div class="panel-heading"><div><p class="section-kicker">ACTION QUEUE</p><h2>协同待办</h2></div><button class="text-button" type="button" data-jump="purchaseOrders">查看订单 <span>→</span></button></div>
-                <div class="queue-list">
-                  <button class="queue-item" type="button" data-jump="purchaseOrders"><span class="queue-icon order">PO</span><span class="queue-copy"><small>采购订单</small><b>4 笔订单等待确认</b><em>请核对交期和行项目数量</em></span><span class="queue-action">去确认 →</span></button>
-                  <button class="queue-item" type="button" data-jump="asns"><span class="queue-icon shipment">ASN</span><span class="queue-copy"><small>发运通知</small><b>2 单发运计划待提交</b><em>基于采购订单创建 ASN</em></span><span class="queue-action">去发运 →</span></button>
-                  <button class="queue-item" type="button" data-jump="invoices"><span class="queue-icon invoice">¥</span><span class="queue-copy"><small>结算对账</small><b>2 笔发票等待核对</b><em>结合收货凭证完成差异沟通</em></span><span class="queue-action">去对账 →</span></button>
-                </div>
-              </article>
-
-              <article class="supplier-card">
-                <div class="supplier-card-head"><div><p class="section-kicker">SUPPLIER PROFILE</p><h2 id="scopeTitle">正在校验供应商身份</h2></div><span class="data-tag">LIVE / SAP</span></div>
-                <dl class="supplier-facts"><div><dt>采购组织</dt><dd>1600</dd></div><div><dt>公司代码</dt><dd>1000</dd></div><div><dt>付款条款</dt><dd>30 天月结</dd></div><div><dt>交易币种</dt><dd>CNY</dd></div></dl>
-                <button class="supplier-link" type="button" data-jump="suppliers">查看供应商主数据 <span>→</span></button>
-              </article>
-            </section>
-
-            <section class="module-section"><div class="panel-heading"><div><p class="section-kicker">WORK MODULES</p><h2>协同工作台</h2></div><p class="module-caption">选择业务模块，按当前供应商范围读取 SAP 数据</p></div><div id="moduleCards" class="module-cards"></div></section>
-            <section class="trust-note"><span class="trust-mark">✓</span><p><b>数据使用说明：</b>Portal 不保存 SAP 业务数据，也不在浏览器中保存 SAP 凭据。每次查询均在服务端带入供应商范围。</p></section>
-          </section>
-
-          <section id="resourceView" class="resource-page" hidden>
-            <div class="resource-heading"><div><button id="backToOverview" class="back-button" type="button">← 工作台</button><p class="section-kicker" id="resourceEyebrow">LIVE SAP QUERY</p><h1 id="pageTitle">采购订单</h1><p id="resourceDescription">SAP 实时业务记录</p></div><div id="resourceActions" class="resource-actions"><button id="exportButton" class="plain-button export-button" type="button">⇩ 导出</button><button id="createAsnButton" class="secondary-button" type="button" hidden>＋ 新增 ASN</button><button id="refreshButton" class="refresh-button" type="button"><span>↻</span> 刷新数据</button></div></div>
-            <div id="queryPanel" class="query-panel panel"><label class="search-field"><span>⌕</span><input id="searchInput" placeholder="输入订单号、物料或关键字后按回车查询" autocomplete="off" /></label><div class="query-hint"><span class="shield">✓</span> 查询自动限定在当前供应商范围</div></div>
-            <div id="filterPanel" class="filter-panel" hidden></div>
-            <div class="data-bar"><span id="retrievedAt">尚未读取 SAP 数据</span><span id="dataCount"></span></div>
-            <div id="tableWrap" class="table-wrap panel"><div class="empty-state"><span>◎</span><b>准备读取实时业务数据</b><p>点击“刷新数据”开始查询。</p></div></div>
-            <section id="analyticsView" class="analytics-view" hidden></section>
-          </section>
-        </section>
+      <main class="main-panel">
+        <header class="topbar"><button id="menuButton" class="menu-button" aria-label="展开导航">☰</button><div class="breadcrumb"><span>⌂</span><em>/</em><span id="vendorName">供应商工作空间</span><em>/</em><b id="breadcrumbPage">工作台</b></div><div class="topbar-actions"><span class="update-time">◷ 数据更新于 <b id="updateTime">刚刚</b></span><button id="refreshButton" class="btn btn-ghost">↻ 刷新数据</button><div class="user-chip"><span>供</span><p><b>供应商用户</b><small id="vendorScope">身份校验中</small></p></div></div></header>
+        <section id="pageContainer" class="page-container" aria-live="polite"></section>
       </main>
     </div>
-    <template id="navTemplate"><button class="nav-item" type="button"><span class="nav-icon"></span><span class="nav-label"></span></button></template>
-    <template id="moduleTemplate"><button class="module-card" type="button"><span class="module-icon"></span><span class="module-copy"><small></small><b></b><em></em></span><span class="module-arrow">→</span></button></template>
-    <aside id="detailDrawer" class="detail-drawer" aria-label="单据详情" hidden><div class="drawer-head"><div><p class="section-kicker">DOCUMENT DETAIL</p><h2 id="drawerTitle">单据详情</h2></div><button id="closeDrawer" class="close-button" type="button" aria-label="关闭详情">×</button></div><div id="drawerBody" class="drawer-body"></div></aside>
-    <div id="asnModal" class="modal-layer" hidden><section class="asn-modal" role="dialog" aria-modal="true" aria-labelledby="asnModalTitle"><div class="drawer-head"><div><p class="section-kicker">CREATE ASN</p><h2 id="asnModalTitle">基于订单创建 ASN</h2></div><button id="closeAsnModal" class="close-button" type="button" aria-label="关闭">×</button></div><p class="modal-intro">请按实际发运计划填写。提交前系统会将供应商范围强制写入请求，SAP 写接口未配置时不会创建单据。</p><form id="asnForm"><div class="form-grid"><label>采购订单<input name="purchaseOrder" required placeholder="例如 4500001234" /></label><label>计划到货日期<input name="plannedDeliveryDate" type="date" required /></label><label>实际发运日期<input name="shippingDate" type="date" required /></label><label>运输单号<input name="transportReference" placeholder="可选" /></label></div><div class="asn-lines"><div class="line-heading"><b>发运行项目</b><button id="addAsnLine" type="button" class="text-button">＋ 添加行</button></div><div id="asnLineRows"></div></div><div class="modal-actions"><span id="asnFormMessage"></span><button id="cancelAsn" type="button" class="plain-button">取消</button><button type="submit" class="refresh-button">提交 ASN</button></div></form></section></div>
+    <div id="drawerOverlay" class="drawer-overlay"></div><aside id="drawer" class="drawer"><header><div><small>DOCUMENT DETAIL</small><h2 id="drawerTitle">单据详情</h2></div><button id="closeDrawer" aria-label="关闭详情">×</button></header><div id="drawerBody"></div></aside>
+    <div id="modalOverlay" class="modal-overlay" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><header><div><small>CREATE ASN</small><h2 id="modalTitle">基于订单创建 ASN</h2></div><button id="closeModal" aria-label="关闭">×</button></header><form id="asnForm"><p>请按实际发运计划填写。供应商范围将由服务端强制校验。</p><div class="form-grid"><label>采购订单<input name="purchaseOrder" required placeholder="4500001234" /></label><label>实际发运日期<input name="shippingDate" required type="date" /></label><label>计划到货日期<input name="plannedDeliveryDate" required type="date" /></label><label>运输单号<input name="transportReference" placeholder="可选" /></label></div><div class="form-lines"><div><b>发运行项目</b><button type="button" id="addAsnLine" class="link-button">＋ 添加行</button></div><div id="asnLines"></div></div><footer><span id="asnMessage"></span><button type="button" id="cancelModal" class="btn btn-secondary">取消</button><button class="btn btn-primary" type="submit">提交 ASN</button></footer></form></section></div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
