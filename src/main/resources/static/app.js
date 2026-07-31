@@ -24,6 +24,7 @@ const filterDefinitions = {
 let current = 'overview';
 let currentRecords = [];
 let activeFilters = {};
+let pageIndex = 1;
 const $ = (selector) => document.querySelector(selector);
 const navigation = $('#navigation'), moduleCards = $('#moduleCards'), pageTitle = $('#pageTitle'), dashboard = $('#dashboard'), resourceView = $('#resourceView');
 const statusStrip = $('#statusStrip'), connectionLabel = $('#connectionLabel'), vendorScope = $('#vendorScope'), scopeTitle = $('#scopeTitle');
@@ -46,6 +47,7 @@ for (const resource of resources) {
 document.querySelectorAll('[data-jump]').forEach((button) => button.addEventListener('click', () => selectResource(button.dataset.jump)));
 $('#backToOverview').addEventListener('click', () => selectResource('overview', false));
 $('#refreshButton').addEventListener('click', loadCurrent); searchInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadCurrent(); });
+$('#menuButton').addEventListener('click', () => document.querySelector('.app-frame').classList.toggle('mobile-nav-open'));
 $('#utilityDate').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
 createAsnButton.addEventListener('click', openAsnModal); $('#closeDrawer').addEventListener('click', closeDrawer); $('#closeAsnModal').addEventListener('click', closeAsnModal); $('#cancelAsn').addEventListener('click', closeAsnModal); $('#addAsnLine').addEventListener('click', () => addAsnLine()); $('#asnForm').addEventListener('submit', submitAsn);
 
@@ -60,7 +62,7 @@ async function bootstrap() {
 }
 
 function selectResource(id, shouldLoad = true) {
-  current = id; activeFilters = {}; currentRecords = []; closeDrawer();
+  current = id; activeFilters = {}; currentRecords = []; pageIndex = 1; closeDrawer(); document.querySelector('.app-frame').classList.remove('mobile-nav-open');
   const resource = resources.find((item) => item.id === id); document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.resource === id));
   document.querySelectorAll('.flow-step').forEach((button) => button.classList.toggle('active', button.dataset.jump === id));
   const isOverview = resource.type === 'overview'; dashboard.hidden = !isOverview; resourceView.hidden = isOverview;
@@ -85,7 +87,7 @@ async function loadCurrent() {
   tableWrap.innerHTML = '<div class="loading"><span></span>正在向 SAP 请求实时数据</div>';
   try {
     const params = new URLSearchParams({ top: '100' }); if (searchInput.value.trim()) params.set('search', searchInput.value.trim());
-    const payload = await getJson(`/api/data/${current}?${params}`); currentRecords = applyFilters(payload.records, activeFilters, current);
+    const payload = await getJson(`/api/data/${current}?${params}`); currentRecords = applyFilters(payload.records, activeFilters, current); pageIndex = 1;
     const time = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(payload.retrievedAt)); retrievedAt.textContent = `最近读取：${time}`; dataCount.textContent = `SAP 返回 ${payload.count} 条 · 当前筛选 ${currentRecords.length} 条`;
     renderDocumentTable(currentRecords, resource);
   } catch (error) { retrievedAt.textContent = '查询未完成'; dataCount.textContent = ''; tableWrap.innerHTML = `<div class="error-copy">未能读取 SAP 数据：${escapeHtml(error.message)}</div>`; }
@@ -98,16 +100,19 @@ async function loadDashboard() {
 
 function renderAnalytics(payload) {
   const metrics = payload.metrics || []; const orderStatus = payload.orderStatus || []; const asnStatus = payload.asnStatus || [];
-  analyticsView.innerHTML = `<div class="analytics-note"><span>▣</span><p><b>采购执行数据看板</b>　基于当前供应商范围内实时读取的记录汇总。每类数据最多读取 ${payload.sampleLimit || 100} 条，适用于协同监控，不替代 SAP 正式报表。</p><small>更新于 ${formatDate(payload.retrievedAt)}</small></div><div class="metric-grid">${metrics.map((metric) => `<article class="metric-card"><span>${escapeHtml(metric.code)}</span><b>${metric.value}</b><p>${escapeHtml(metric.label)}</p><small>${escapeHtml(metric.hint)}</small></article>`).join('')}</div><div class="chart-grid"><article class="panel status-chart"><div class="panel-heading"><div><p class="section-kicker">ORDER STATUS</p><h2>订单执行状态</h2></div></div>${barChart(orderStatus, '#246bdf')}</article><article class="panel status-chart"><div class="panel-heading"><div><p class="section-kicker">ASN STATUS</p><h2>发运协同状态</h2></div></div>${barChart(asnStatus, '#0c9b88')}</article></div><article class="panel analytics-guidance"><p class="section-kicker">ACTION GUIDE</p><h2>用看板识别协同优先级</h2><div><p><b>订单：</b>优先核对待确认订单和临近交期的行项目。</p><p><b>发运：</b>对无 ASN 的订单补充发运计划；对运输中 ASN 跟踪到货。</p><p><b>结算：</b>结合收货凭证与发票状态完成差异沟通。</p></div></article>`;
+  analyticsView.innerHTML = `<div class="analytics-note"><span>▣</span><p><b>采购执行数据看板</b>　基于当前供应商范围内实时读取的记录汇总。每类数据最多读取 ${payload.sampleLimit || 100} 条，适用于协同监控，不替代 SAP 正式报表。</p><small>更新于 ${formatDate(payload.retrievedAt)}</small></div><div class="metric-grid">${metrics.map((metric) => `<article class="metric-card"><span>${escapeHtml(metric.code)}</span><b>${metric.value}</b><p>${escapeHtml(metric.label)}</p><small>${escapeHtml(metric.hint)}</small></article>`).join('')}</div><div class="chart-grid"><article class="panel status-chart"><div class="panel-heading"><div><p class="section-kicker">ORDER STATUS</p><h2>订单执行状态</h2></div></div>${barChart(orderStatus, '#3B82F6')}</article><article class="panel status-chart"><div class="panel-heading"><div><p class="section-kicker">ASN STATUS</p><h2>发运协同状态</h2></div></div>${barChart(asnStatus, '#10B981')}</article></div><article class="panel analytics-guidance"><p class="section-kicker">ACTION GUIDE</p><h2>用看板识别协同优先级</h2><div><p><b>订单：</b>优先核对待确认订单和临近交期的行项目。<button data-analytics-jump="purchaseOrders">立即处理</button></p><p><b>发运：</b>对无 ASN 的订单补充发运计划；对运输中 ASN 跟踪到货。<button data-analytics-jump="asns">查看发运</button></p><p><b>结算：</b>结合收货凭证与发票状态完成差异沟通。<button data-analytics-jump="invoices">核对发票</button></p></div></article>`;
+  analyticsView.querySelectorAll('[data-analytics-jump]').forEach((button) => button.addEventListener('click', () => selectResource(button.dataset.analyticsJump)));
 }
 function barChart(items, color) { const max = Math.max(...items.map((item) => Number(item.value)), 1); return items.length ? `<div class="bar-chart">${items.map((item) => `<div class="bar-row"><span>${escapeHtml(item.label)}</span><div><i style="width:${Math.max(5, Math.round(Number(item.value) / max * 100))}%;background:${color}"></i></div><b>${item.value}</b></div>`).join('')}</div>` : '<div class="chart-empty">SAP 未返回可用于统计的状态字段。</div>'; }
 
 function renderDocumentTable(records, resource) {
   if (!records.length) { tableWrap.innerHTML = emptyState('当前范围内没有匹配记录', '可调整筛选条件后再次查询。'); return; }
-  const keys = selectColumns(records, resource.id); const header = keys.map((key) => `<th>${escapeHtml(labelFor(key))}</th>`).join('');
-  const rows = records.map((record, index) => `<tr data-index="${index}" tabindex="0">${keys.map((key) => `<td>${escapeHtml(formatValue(record[key]))}</td>`).join('')}<td class="row-action">查看详情 →</td></tr>`).join('');
-  tableWrap.innerHTML = `<table class="document-table"><thead><tr>${header}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  const perPage = 10, totalPages = Math.max(1, Math.ceil(records.length / perPage)); pageIndex = Math.min(pageIndex, totalPages);
+  const keys = selectColumns(records, resource.id); const header = keys.map((key) => `<th>${escapeHtml(labelFor(key))}</th>`).join(''); const sliceStart = (pageIndex - 1) * perPage;
+  const rows = records.slice(sliceStart, sliceStart + perPage).map((record, index) => `<tr data-index="${sliceStart + index}" tabindex="0">${keys.map((key) => `<td>${renderCell(key, record[key])}</td>`).join('')}<td class="row-action">查看详情 →</td></tr>`).join('');
+  tableWrap.innerHTML = `<table class="document-table"><thead><tr>${header}<th></th></tr></thead><tbody>${rows}</tbody></table><div class="table-footer"><span>共 ${records.length} 条记录</span><div class="pagination"><button type="button" data-page="${pageIndex - 1}" ${pageIndex === 1 ? 'disabled' : ''}>←</button><b>${pageIndex}</b><span>/ ${totalPages}</span><button type="button" data-page="${pageIndex + 1}" ${pageIndex === totalPages ? 'disabled' : ''}>→</button></div></div>`;
   tableWrap.querySelectorAll('tbody tr').forEach((row) => { const open = () => showDetail(records[Number(row.dataset.index)], resource); row.addEventListener('click', open); row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); }); });
+  tableWrap.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => { pageIndex = Number(button.dataset.page); renderDocumentTable(records, resource); }));
 }
 function selectColumns(records, resourceId) { const preferred = { purchaseOrders: ['PurchaseOrder', 'PurchaseOrderItem', 'Supplier', 'PurchaseOrderDate', 'DeliveryDate', 'PurchaseOrderStatus'], materialDocuments: ['MaterialDocument', 'MaterialDocumentItem', 'Material', 'PostingDate', 'GoodsMovementType', 'QuantityInEntryUnit'], asns: ['InbDelivery', 'PurchaseOrder', 'PlannedDeliveryDate', 'OverallStatus'], invoices: ['SupplierInvoice', 'PurchaseOrder', 'DocumentDate', 'SupplierInvoiceStatus', 'InvoiceGrossAmount'] }[resourceId] || []; const present = preferred.filter((key) => records.some((record) => record[key] !== undefined)); return (present.length ? present : [...new Set(records.flatMap((record) => Object.keys(record)))]).slice(0, 7); }
 function showDetail(record, resource) {
@@ -128,6 +133,8 @@ async function submitAsn(event) { event.preventDefault(); const form = new FormD
 function applyFilters(records, filters, resource) { return records.filter((record) => Object.entries(filters).every(([key, value]) => { if (!value) return true; const comparable = Object.entries(record).filter(([field]) => field.toLowerCase().includes(key.toLowerCase().replace(/from|to/g, '')) || key === 'status' && /status/i.test(field)).map(([, fieldValue]) => String(fieldValue ?? '')).join(' '); if (/from$/.test(key) || /to$/.test(key)) { const dateField = Object.entries(record).find(([field]) => /date/i.test(field)); if (!dateField) return true; const date = String(dateField[1]).slice(0, 10); return key.endsWith('From') ? date >= value : date <= value; } return comparable ? comparable.toLowerCase().includes(String(value).toLowerCase()) : true; })); }
 function emptyState(title, body) { return `<div class="empty-state"><span>◎</span><b>${title}</b><p>${body}</p></div>`; }
 function labelFor(key) { return ({ PurchaseOrder: '采购订单', PurchaseOrderItem: '项目', Supplier: '供应商', PurchaseOrderDate: '订单日期', DeliveryDate: '交货日期', PurchaseOrderStatus: '订单状态', MaterialDocument: '物料凭证', MaterialDocumentItem: '项目', Material: '物料', PostingDate: '过账日期', GoodsMovementType: '移动类型', QuantityInEntryUnit: '收货数量', InbDelivery: 'ASN 编号', PlannedDeliveryDate: '计划到货', OverallStatus: '状态', SupplierInvoice: '供应商发票', DocumentDate: '凭证日期', SupplierInvoiceStatus: '发票状态', InvoiceGrossAmount: '发票金额' })[key] || key; }
+function renderCell(key, value) { const text = escapeHtml(formatValue(value)); if (/status/i.test(key)) return `<span class="status-badge ${statusTone(value)}">${text}</span>`; if (/amount|quantity|price|value/i.test(key)) return `<span class="numeric-cell">${text}</span>`; return text; }
+function statusTone(value) { const text = String(value || ''); if (/逾期|异常|错误|拒绝/.test(text)) return 'danger'; if (/待|草稿|取消/.test(text)) return 'warning'; if (/已收货|已对账|已完成|已启用/.test(text)) return 'success'; return 'info'; }
 function formatValue(value) { if (value === null || value === undefined || value === '') return '—'; if (typeof value === 'object') return Array.isArray(value) ? `${value.length} 条明细` : JSON.stringify(value); return String(value); }
 function formatDate(value) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'; }
 function escapeHtml(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
