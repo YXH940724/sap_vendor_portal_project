@@ -71,16 +71,20 @@
           </section>
 
           <section id="resourceView" class="resource-page" hidden>
-            <div class="resource-heading"><div><button id="backToOverview" class="back-button" type="button">← 返回工作台</button><p class="section-kicker" id="resourceEyebrow">LIVE SAP QUERY</p><h1 id="pageTitle">采购订单</h1><p id="resourceDescription">SAP 实时业务记录</p></div><button id="refreshButton" class="refresh-button" type="button"><span>↻</span> 刷新数据</button></div>
-            <div class="query-panel panel"><label class="search-field"><span>⌕</span><input id="searchInput" placeholder="输入订单号、物料或关键字后按回车查询" autocomplete="off" /></label><div class="query-hint"><span class="shield">✓</span> 查询自动限定在当前供应商范围</div></div>
+            <div class="resource-heading"><div><button id="backToOverview" class="back-button" type="button">← 返回工作台</button><p class="section-kicker" id="resourceEyebrow">LIVE SAP QUERY</p><h1 id="pageTitle">采购订单</h1><p id="resourceDescription">SAP 实时业务记录</p></div><div id="resourceActions" class="resource-actions"><button id="createAsnButton" class="secondary-button" type="button" hidden>＋ 基于订单创建 ASN</button><button id="refreshButton" class="refresh-button" type="button"><span>↻</span> 刷新数据</button></div></div>
+            <div id="queryPanel" class="query-panel panel"><label class="search-field"><span>⌕</span><input id="searchInput" placeholder="输入订单号、物料或关键字后按回车查询" autocomplete="off" /></label><div class="query-hint"><span class="shield">✓</span> 查询自动限定在当前供应商范围</div></div>
+            <div id="filterPanel" class="filter-panel" hidden></div>
             <div class="data-bar"><span id="retrievedAt">尚未读取 SAP 数据</span><span id="dataCount"></span></div>
             <div id="tableWrap" class="table-wrap panel"><div class="empty-state"><span>◎</span><b>准备读取实时业务数据</b><p>点击“刷新数据”开始查询。</p></div></div>
+            <section id="analyticsView" class="analytics-view" hidden></section>
           </section>
         </section>
       </main>
     </div>
     <template id="navTemplate"><button class="nav-item" type="button"><span class="nav-icon"></span><span class="nav-label"></span></button></template>
     <template id="moduleTemplate"><button class="module-card" type="button"><span class="module-icon"></span><span class="module-copy"><small></small><b></b><em></em></span><span class="module-arrow">→</span></button></template>
+    <aside id="detailDrawer" class="detail-drawer" aria-label="单据详情" hidden><div class="drawer-head"><div><p class="section-kicker">DOCUMENT DETAIL</p><h2 id="drawerTitle">单据详情</h2></div><button id="closeDrawer" class="close-button" type="button" aria-label="关闭详情">×</button></div><div id="drawerBody" class="drawer-body"></div></aside>
+    <div id="asnModal" class="modal-layer" hidden><section class="asn-modal" role="dialog" aria-modal="true" aria-labelledby="asnModalTitle"><div class="drawer-head"><div><p class="section-kicker">CREATE ASN</p><h2 id="asnModalTitle">基于订单创建 ASN</h2></div><button id="closeAsnModal" class="close-button" type="button" aria-label="关闭">×</button></div><p class="modal-intro">请按实际发运计划填写。提交前系统会将供应商范围强制写入请求，SAP 写接口未配置时不会创建单据。</p><form id="asnForm"><div class="form-grid"><label>采购订单<input name="purchaseOrder" required placeholder="例如 4500001234" /></label><label>计划到货日期<input name="plannedDeliveryDate" type="date" required /></label><label>实际发运日期<input name="shippingDate" type="date" required /></label><label>运输单号<input name="transportReference" placeholder="可选" /></label></div><div class="asn-lines"><div class="line-heading"><b>发运行项目</b><button id="addAsnLine" type="button" class="text-button">＋ 添加行</button></div><div id="asnLineRows"></div></div><div class="modal-actions"><span id="asnFormMessage"></span><button id="cancelAsn" type="button" class="plain-button">取消</button><button type="submit" class="refresh-button">提交 ASN</button></div></form></section></div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
