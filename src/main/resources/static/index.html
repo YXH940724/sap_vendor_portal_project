@@ -4,35 +4,83 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="SAP 供应商协同门户" />
-    <title>供应商协同台 · SAP</title>
+    <title>协同控制台 · SAP Supplier Portal</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <aside class="rail" aria-label="主导航">
-        <div class="brand"><span class="brand-mark">S</span><span>供应商<br/>协同台</span></div>
+    <div class="app-frame">
+      <aside class="sidebar" aria-label="主导航">
+        <a class="brand" href="#overview" aria-label="供应商协同控制台首页">
+          <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="brand-copy">供应商<br /><b>协同控制台</b></span>
+        </a>
         <nav id="navigation" class="navigation"></nav>
-        <div class="rail-foot"><span class="pulse"></span> SAP OData 实时连接</div>
+        <div class="sidebar-footer">
+          <span class="live-dot"></span>
+          <div><b>SAP 实时数据</b><small id="connectionLabel">正在检查连接</small></div>
+        </div>
       </aside>
-      <section class="workspace">
-        <header class="topbar">
-          <div><p class="eyebrow">SUPPLIER OPERATIONS / LIVE</p><h1 id="pageTitle">业务总览</h1></div>
-          <div class="identity"><span class="identity-dot"></span><div><small>当前数据范围</small><strong id="vendorScope">正在校验</strong></div></div>
+
+      <main class="main-content">
+        <header class="utility-bar">
+          <button class="menu-button" type="button" aria-label="展开导航"><span></span><span></span></button>
+          <div class="utility-context"><span>供应商工作空间</span><em>·</em><span id="utilityDate">今天</span></div>
+          <div class="utility-actions">
+            <button class="icon-button" type="button" aria-label="通知"><span aria-hidden="true">◌</span><i></i></button>
+            <div class="account"><span class="avatar">V</span><span><b>供应商用户</b><small id="vendorScope">范围校验中</small></span><span class="chevron">⌄</span></div>
+          </div>
         </header>
-        <section class="status-strip" id="statusStrip" aria-live="polite">正在连接 Portal 服务…</section>
-        <section id="dashboard" class="dashboard">
-          <article class="intro-card"><p class="eyebrow">今日协同焦点</p><h2>先确认承诺，再让数据自己说话。</h2><p>所有数据由 SAP PE/ES 标准 OData 实时读取；浏览器不会接触 SAP 凭据。</p><div class="rule"></div><p class="muted">选择左侧模块开始查询。未配置凭据时，系统只展示配置状态，不会伪造业务数据。</p></article>
-          <article class="principle-card"><span class="seal">01</span><h2>无数据库架构</h2><p>Portal 不保存供应商业务数据、密码或权限表。身份由 IAM 承担，业务事实留在 SAP。</p></article>
-          <article class="principle-card"><span class="seal">02</span><h2>范围先于查询</h2><p>每次 OData 请求都由服务端注入供应商范围；前端筛选条件不能扩大数据权限。</p></article>
+
+        <section class="page-shell">
+          <section id="dashboard" class="dashboard-page">
+            <div class="page-heading">
+              <div><p class="section-kicker">OPERATIONS DESK</p><h1>今天，优先处理什么？</h1><p>围绕每一张订单推进交付、收货与结算。</p></div>
+              <div id="statusStrip" class="system-status" aria-live="polite"><span></span>正在连接 Portal 服务</div>
+            </div>
+
+            <section class="flow-ribbon" aria-label="供应链协同链路">
+              <div class="flow-title"><span class="flow-glyph">↗</span><span><b>协同链路</b><small>每一环均通过 SAP OData 实时读取</small></span></div>
+              <div class="flow-steps">
+                <button class="flow-step active" type="button" data-jump="purchaseOrders"><span>01</span><b>订单确认</b><small>查看变更与交期</small></button>
+                <button class="flow-step" type="button" data-jump="asns"><span>02</span><b>发运协同</b><small>创建与追踪 ASN</small></button>
+                <button class="flow-step" type="button" data-jump="materialDocuments"><span>03</span><b>收货确认</b><small>核验物料凭证</small></button>
+                <button class="flow-step" type="button" data-jump="invoices"><span>04</span><b>对账结算</b><small>核对发票状态</small></button>
+              </div>
+            </section>
+
+            <section class="workspace-grid">
+              <article class="work-queue panel">
+                <div class="panel-heading"><div><p class="section-kicker">ACTION QUEUE</p><h2>协同待办</h2></div><button class="text-button" type="button" data-jump="purchaseOrders">查看订单 <span>→</span></button></div>
+                <div class="queue-list">
+                  <button class="queue-item" type="button" data-jump="purchaseOrders"><span class="queue-icon order">PO</span><span class="queue-copy"><b>确认待处理的采购订单</b><small>订单变更、交期承诺与行项目查询</small></span><span class="queue-arrow">→</span></button>
+                  <button class="queue-item" type="button" data-jump="asns"><span class="queue-icon shipment">↗</span><span class="queue-copy"><b>提交或查看发运通知</b><small>以 ASN 对齐发货、到货与收货节奏</small></span><span class="queue-arrow">→</span></button>
+                  <button class="queue-item" type="button" data-jump="invoices"><span class="queue-icon invoice">¥</span><span class="queue-copy"><b>核对待结算单据</b><small>查看供应商发票与对账基础数据</small></span><span class="queue-arrow">→</span></button>
+                </div>
+              </article>
+
+              <article class="signal-card">
+                <div class="signal-top"><span class="signal-orbit"></span><span class="data-tag">LIVE / SAP</span></div>
+                <p>工作范围</p><h2 id="scopeTitle">正在校验供应商身份</h2>
+                <div class="signal-grid"><div><b>实时读取</b><span>订单、ASN、收货、发票</span></div><div><b>范围隔离</b><span>服务端强制执行</span></div></div>
+                <button class="signal-button" type="button" data-jump="suppliers">查看主数据 <span>→</span></button>
+              </article>
+            </section>
+
+            <section class="module-section"><div class="panel-heading"><div><p class="section-kicker">WORK MODULES</p><h2>协同工作台</h2></div><p class="module-caption">选择业务模块，按当前供应商范围读取 SAP 数据</p></div><div id="moduleCards" class="module-cards"></div></section>
+            <section class="trust-note"><span class="trust-mark">✓</span><p><b>数据使用说明：</b>Portal 不保存 SAP 业务数据，也不在浏览器中保存 SAP 凭据。每次查询均在服务端带入供应商范围。</p></section>
+          </section>
+
+          <section id="resourceView" class="resource-page" hidden>
+            <div class="resource-heading"><div><button id="backToOverview" class="back-button" type="button">← 返回工作台</button><p class="section-kicker" id="resourceEyebrow">LIVE SAP QUERY</p><h1 id="pageTitle">采购订单</h1><p id="resourceDescription">SAP 实时业务记录</p></div><button id="refreshButton" class="refresh-button" type="button"><span>↻</span> 刷新数据</button></div>
+            <div class="query-panel panel"><label class="search-field"><span>⌕</span><input id="searchInput" placeholder="输入订单号、物料或关键字后按回车查询" autocomplete="off" /></label><div class="query-hint"><span class="shield">✓</span> 查询自动限定在当前供应商范围</div></div>
+            <div class="data-bar"><span id="retrievedAt">尚未读取 SAP 数据</span><span id="dataCount"></span></div>
+            <div id="tableWrap" class="table-wrap panel"><div class="empty-state"><span>◎</span><b>准备读取实时业务数据</b><p>点击“刷新数据”开始查询。</p></div></div>
+          </section>
         </section>
-        <section id="resourceView" class="resource-view" hidden>
-          <div class="query-bar"><label><span>检索</span><input id="searchInput" placeholder="按单号或关键字过滤" autocomplete="off" /></label><button id="refreshButton" class="primary">刷新 SAP 数据</button></div>
-          <div class="data-caption"><span id="resourceDescription"></span><span id="retrievedAt"></span></div>
-          <div id="tableWrap" class="table-wrap"><div class="empty">点击“刷新 SAP 数据”加载实时记录。</div></div>
-        </section>
-      </section>
-    </main>
-    <template id="navTemplate"><button class="nav-item" type="button"><span class="nav-code"></span><span class="nav-label"></span></button></template>
+      </main>
+    </div>
+    <template id="navTemplate"><button class="nav-item" type="button"><span class="nav-icon"></span><span class="nav-label"></span></button></template>
+    <template id="moduleTemplate"><button class="module-card" type="button"><span class="module-icon"></span><span class="module-copy"><small></small><b></b><em></em></span><span class="module-arrow">→</span></button></template>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
