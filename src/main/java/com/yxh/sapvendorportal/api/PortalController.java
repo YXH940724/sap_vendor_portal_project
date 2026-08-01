@@ -1,6 +1,7 @@
 package com.yxh.sapvendorportal.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yxh.sapvendorportal.config.PortalProperties;
 import com.yxh.sapvendorportal.sap.SapODataClient;
 import com.yxh.sapvendorportal.security.VendorScopeResolver;
@@ -27,7 +28,7 @@ public class PortalController {
     private final Map<String, Resource> resources = Map.of(
             "suppliers", new Resource("businessPartner", "BusinessPartner", "BusinessPartner asc"),
             "purchaseOrders", new Resource("purchaseOrder", "PurchaseOrder", "LastChangeDateTime desc"),
-            "asns", new Resource("asn", "InbDelivery", "LastChangeDateTime desc"),
+            "asns", new Resource("asn", "InbDelivery", "LastChangeDate desc"),
             "materialDocuments", new Resource("materialDocument", "MaterialDocument", "LastChangeDateTime desc"),
             "invoices", new Resource("supplierInvoice", "SupplierInvoice", "LastChangeDateTime desc")
     );
@@ -90,7 +91,14 @@ public class PortalController {
     private List<JsonNode> load(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         Resource resource = resources.get(resourceName);
         if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
+        if ("purchaseOrders".equals(resourceName)) return loadPurchaseOrders(vendorId, top);
         PortalProperties.Service target = service(resource.serviceName());
+        if ("invoices".equals(resourceName)) {
+            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
+            if (scopedOrders.isEmpty()) return List.of();
+            List<JsonNode> invoices = recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
+            return invoices.stream().filter(invoice -> scopedOrders.contains(invoice.path("PurchaseOrder").asText())).toList();
+        }
         if ("purchase_order".equals(target.getScopeMode())) {
             List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
             if (scopedOrders.isEmpty()) return List.of();
@@ -99,7 +107,28 @@ public class PortalController {
         return recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
     }
     private List<JsonNode> loadPurchaseOrders(String vendorId, int top) {
-        return recordMapper.map("purchaseOrders", sapClient.get(service("purchaseOrder"), vendorId, "", "PurchaseOrder", "LastChangeDateTime desc", top));
+        List<JsonNode> headers = sapClient.get(service("purchaseOrder"), vendorId, "", "PurchaseOrder", "LastChangeDateTime desc", top);
+        List<String> ids = purchaseOrderIds(headers);
+        if (ids.isEmpty()) return List.of();
+        List<JsonNode> items = recordMapper.map("purchaseOrders", sapClient.getByReferences(purchaseOrderItemService(), ids, "PurchaseOrder", "PurchaseOrder asc", top));
+        Map<String, JsonNode> headerByOrder = new LinkedHashMap<>();
+        headers.forEach(header -> headerByOrder.put(header.path("PurchaseOrder").asText(), header));
+        return items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
+    }
+    private PortalProperties.Service purchaseOrderItemService() {
+        PortalProperties.Service itemService = new PortalProperties.Service();
+        itemService.setUrl(properties.getSap().getPurchaseOrder().getUrl());
+        itemService.setEntity("PurchaseOrderItem");
+        itemService.setExpand("_PurchaseOrderScheduleLineTP");
+        return itemService;
+    }
+    private JsonNode enrichPurchaseOrderItem(JsonNode item, JsonNode header) {
+        if (header == null || !item.isObject()) return item;
+        ObjectNode result = ((ObjectNode) item).deepCopy();
+        for (String field : List.of("Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency")) {
+            if (!result.has(field) && header.has(field)) result.set(field, header.get(field));
+        }
+        return result;
     }
     private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }

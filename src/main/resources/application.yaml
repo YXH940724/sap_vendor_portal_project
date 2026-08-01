@@ -16,28 +16,25 @@ portal:
     bearer-token: ${SAP_BEARER_TOKEN:}
     business-partner:
       url: ${SAP_BUSINESS_PARTNER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_BUSINESS_PARTNER}
-      entity: ${SAP_BP_ENTITY:A_BusinessPartner}
-      supplier-field: ${SAP_BP_SUPPLIER_FIELD:BusinessPartner}
+      entity: A_BusinessPartner
+      supplier-field: BusinessPartner
     purchase-order:
       url: ${SAP_PURCHASE_ORDER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata4/sap/api_purchaseorder_2/srvd_a2x/sap/purchaseorder/0001/}
-      entity: ${SAP_PO_ENTITY:PurchaseOrder}
-      supplier-field: ${SAP_PO_SUPPLIER_FIELD:Supplier}
-      expand: ${SAP_PO_EXPAND:_PurchaseOrderItem}
+      entity: PurchaseOrder
+      supplier-field: Supplier
+      expand: _PurchaseOrderItem
     asn:
       url: ${SAP_ASN_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_INBOUND_DELIVERY_SRV;v=0002}
-      entity: ${SAP_ASN_ENTITY:A_InbDeliveryHeader}
-      supplier-field: ${SAP_ASN_SUPPLIER_FIELD:Supplier}
+      entity: A_InbDeliveryHeader
+      supplier-field: Supplier
     material-document:
       url: ${SAP_MATERIAL_DOCUMENT_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_MATERIAL_DOCUMENT_SRV}
-      entity: ${SAP_MATERIAL_ENTITY:A_MaterialDocumentItem}
-      supplier-field: ${SAP_MATERIAL_SUPPLIER_FIELD:Supplier}
-      scope-mode: ${SAP_MATERIAL_SCOPE_MODE:purchase_order}
-      reference-field: ${SAP_MATERIAL_REFERENCE_FIELD:PurchaseOrder}
+      entity: A_MaterialDocumentItem
+      supplier-field: Supplier
+      scope-mode: purchase_order
+      reference-field: PurchaseOrder
     supplier-invoice:
       url: ${SAP_SUPPLIER_INVOICE_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_SUPPLIERINVOICE_PROCESS_SRV}
-      entity: ${SAP_INVOICE_ENTITY:A_SupplierInvoice}
-      supplier-field: ${SAP_INVOICE_SUPPLIER_FIELD:InvoicingParty}
-      scope-mode: ${SAP_INVOICE_SCOPE_MODE:purchase_order}
-      reference-field: ${SAP_INVOICE_REFERENCE_FIELD:PurchaseOrder}
-    asn-create-path: ${SAP_ASN_CREATE_PATH:}
-    asn-create-vendor-field: ${SAP_ASN_CREATE_VENDOR_FIELD:}
+      entity: A_SupplierInvoice
+      supplier-field: InvoicingParty
+      expand: to_SuplrInvcItemPurOrdRef

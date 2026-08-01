@@ -58,4 +58,32 @@ class ODataRecordMapperTest {
         assertThat(result.getFirst().path("PurchaseOrderItem").asText()).isEqualTo("00010");
         assertThat(result.getFirst().path("DeliveryDate").asText()).isEqualTo("2026-10-01");
     }
+
+    @Test
+    void flattensInvoiceHeaderUsingPurchaseOrderReferenceNavigation() throws Exception {
+        var invoice = objectMapper.readTree("""
+                {"SupplierInvoice":"5100000001","DocumentDate":"2026-08-01","InvoiceGrossAmount":"500.00",
+                 "SupplierInvoiceStatus":"02","to_SuplrInvcItemPurOrdRef":{"results":[
+                   {"SupplierInvoiceItem":"000001","PurchaseOrder":"4500001001","PurchaseOrderItem":"00010"}
+                 ]}}
+                """);
+
+        var result = mapper.map("invoices", List.of(invoice));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().path("PurchaseOrder").asText()).isEqualTo("4500001001");
+        assertThat(result.getFirst().path("InvoiceGrossAmount").asText()).isEqualTo("500.00");
+    }
+
+    @Test
+    void normalizesInboundDeliveryStandardHeaderFields() throws Exception {
+        var delivery = objectMapper.readTree("""
+                {"DeliveryDocument":"180000001","DeliveryDate":"2026-08-08","OverallGoodsMovementStatus":"C"}
+                """);
+
+        var row = mapper.map("asns", List.of(delivery)).getFirst();
+
+        assertThat(row.path("InbDelivery").asText()).isEqualTo("180000001");
+        assertThat(row.path("OverallStatus").asText()).isEqualTo("C");
+    }
 }

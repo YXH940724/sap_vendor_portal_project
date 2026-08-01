@@ -3,6 +3,7 @@ package com.yxh.sapvendorportal.sap;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yxh.sapvendorportal.config.PortalProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -40,20 +41,40 @@ public class SapODataClient {
     }
 
     public JsonNode createAsn(String vendorId, JsonNode input) {
-        String path = properties.getSap().getAsnCreatePath();
-        String field = properties.getSap().getAsnCreateVendorField();
-        if (blank(path) || blank(field)) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "尚未配置 SAP_ASN_CREATE_PATH 和 SAP_ASN_CREATE_VENDOR_FIELD，不能创建 ASN。");
         String base = properties.getSap().getAsn().getUrl().replaceAll("/$", "");
         HttpResponse<String> csrf = send(baseRequest(URI.create(base)).header("X-CSRF-Token", "Fetch").GET().build());
         if (csrf.statusCode() >= 400) throw sapError(csrf);
         String csrfToken = csrf.headers().firstValue("x-csrf-token").orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 未返回 CSRF Token，不能创建 ASN。"));
-        ObjectNode payload = input.deepCopy();
-        payload.remove("sourcePurchaseOrders");
-        payload.put(field, vendorId);
-        HttpRequest request = baseRequest(URI.create(base + "/" + path.replaceFirst("^/", "")))
+        ObjectNode payload = inboundDeliveryPayload(vendorId, input);
+        HttpRequest request = baseRequest(URI.create(base + "/A_InbDeliveryHeader"))
                 .header("Accept", "application/json").header("Content-Type", "application/json").header("X-CSRF-Token", csrfToken)
                 .POST(HttpRequest.BodyPublishers.ofString(write(payload), StandardCharsets.UTF_8)).build();
         return execute(request);
+    }
+
+    private ObjectNode inboundDeliveryPayload(String vendorId, JsonNode input) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("Supplier", vendorId);
+        copyText(input, payload, "plannedDeliveryDate", "DeliveryDate");
+        copyText(input, payload, "transportReference", "BillOfLading");
+        ObjectNode itemContainer = objectMapper.createObjectNode();
+        ArrayNode items = objectMapper.createArrayNode();
+        input.path("items").forEach(source -> {
+            ObjectNode item = objectMapper.createObjectNode();
+            copyText(source, item, "sourcePurchaseOrder", "ReferenceSDDocument");
+            copyText(source, item, "sourcePurchaseOrderItem", "ReferenceSDDocumentItem");
+            copyText(source, item, "material", "Material");
+            if (source.hasNonNull("quantity")) item.set("ActualDeliveryQuantity", source.get("quantity"));
+            copyText(source, item, "unit", "DeliveryQuantityUnit");
+            items.add(item);
+        });
+        itemContainer.set("results", items);
+        payload.set("to_DeliveryDocumentItem", itemContainer);
+        return payload;
+    }
+    private void copyText(JsonNode source, ObjectNode target, String sourceField, String targetField) {
+        String value = source.path(sourceField).asText();
+        if (!value.isBlank()) target.put(targetField, value);
     }
 
     private HttpRequest.Builder baseRequest(URI uri) {

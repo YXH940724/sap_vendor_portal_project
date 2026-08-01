@@ -19,6 +19,7 @@ public class ODataRecordMapper {
         List<JsonNode> result = new ArrayList<>();
         for (JsonNode record : source) {
             if ("purchaseOrders".equals(resource)) result.addAll(flattenPurchaseOrder(record));
+            else if ("invoices".equals(resource)) result.addAll(flattenInvoice(record));
             else result.add(normalize(resource, copy(record)));
         }
         return result;
@@ -31,7 +32,21 @@ public class ODataRecordMapper {
         for (JsonNode item : items) {
             ObjectNode row = copy(item);
             copyIfMissing(row, header, "PurchaseOrder", "Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate");
+            JsonNode scheduleLines = firstArray(item, "_PurchaseOrderScheduleLineTP", "_PurchaseOrderScheduleLine", "to_PurchaseOrderScheduleLine");
+            if (scheduleLines != null && !scheduleLines.isEmpty()) copyIfMissing(row, scheduleLines.get(0), "ScheduleLineDeliveryDate", "DeliveryDate", "StatDeliveryDate");
             rows.add(normalize("purchaseOrders", row));
+        }
+        return rows;
+    }
+
+    private List<JsonNode> flattenInvoice(JsonNode header) {
+        JsonNode items = firstArray(header, "to_SuplrInvcItemPurOrdRef", "to_SupplierInvoiceItemPurOrdRef");
+        if (items == null) return List.of(normalize("invoices", copy(header)));
+        List<JsonNode> rows = new ArrayList<>();
+        for (JsonNode item : items) {
+            ObjectNode row = copy(item);
+            copyIfMissing(row, header, "SupplierInvoice", "FiscalYear", "DocumentDate", "PostingDate", "InvoiceGrossAmount", "DocumentCurrency", "SupplierInvoiceStatus", "InvoicingParty", "CompanyCode");
+            rows.add(normalize("invoices", row));
         }
         return rows;
     }
@@ -39,16 +54,22 @@ public class ODataRecordMapper {
     private ObjectNode normalize(String resource, ObjectNode row) {
         switch (resource) {
             case "purchaseOrders" -> {
+                JsonNode scheduleLines = firstArray(row, "_PurchaseOrderScheduleLineTP", "_PurchaseOrderScheduleLine", "to_PurchaseOrderScheduleLine");
+                if (scheduleLines != null && !scheduleLines.isEmpty()) copyIfMissing(row, scheduleLines.get(0), "ScheduleLineDeliveryDate", "DeliveryDate", "StatDeliveryDate");
                 alias(row, "MaterialDescription", "PurchaseOrderItemText", "MaterialName", "MaterialDescription");
                 alias(row, "OrderQuantity", "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
                 alias(row, "PurchaseOrderQuantityUnit", "PurchaseOrderQuantityUnit", "OrderQuantityUnit", "BaseUnit", "UnitOfMeasure");
                 alias(row, "DeliveryDate", "ScheduleLineDeliveryDate", "DeliveryDate", "RequestedDeliveryDate", "ConfirmedDeliveryDate", "StatDeliveryDate");
                 alias(row, "PurchaseOrderStatus", "PurchaseOrderItemStatus", "PurchaseOrderStatus", "PurchasingDocumentStatus", "OverallStatus", "LifecycleStatus", "Status");
+                if (!row.hasNonNull("PurchaseOrderStatus") || row.path("PurchaseOrderStatus").asText().isBlank()) {
+                    if (row.path("IsCompletelyDelivered").asBoolean(false)) row.put("PurchaseOrderStatus", "已完成");
+                    else if (!row.path("PurchasingDocumentDeletionCode").asText().isBlank()) row.put("PurchaseOrderStatus", "已取消");
+                }
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
                 alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
-                alias(row, "OverallStatus", "OverallStatus", "InbDeliveryStatus", "Status");
+                alias(row, "OverallStatus", "OverallGoodsMovementStatus", "OverallSDProcessStatus", "OverallStatus", "InbDeliveryStatus", "Status");
                 alias(row, "MaterialDescription", "MaterialDescription", "ItemText", "MaterialName");
             }
             case "materialDocuments" -> {
