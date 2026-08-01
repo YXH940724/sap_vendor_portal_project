@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public final class ODataUrlBuilder {
     private ODataUrlBuilder() { }
@@ -16,6 +18,19 @@ public final class ODataUrlBuilder {
         }
         String filter = service.getSupplierField() + " eq '" + escape(vendorId) + "'";
         if (!blank(search) && !blank(searchField)) filter += " and contains(" + searchField + ",'" + escape(search) + "')";
+        int top = Math.min(Math.max(requestedTop, 1), 100);
+        String base = service.getUrl().replaceAll("/$", "") + "/" + service.getEntity();
+        String query = "$filter=" + encode(filter) + "&$top=" + top + "&$orderby=" + encode(orderBy);
+        if (!blank(service.getExpand())) query += "&$expand=" + encode(service.getExpand());
+        return URI.create(base + "?" + query);
+    }
+    public static URI referenceScopedQuery(PortalProperties.Service service, List<String> references, String referenceField, String orderBy, int requestedTop) {
+        if (blank(service.getUrl()) || blank(service.getEntity()) || blank(referenceField) || references == null || references.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "关联范围查询缺少实体、关联字段或采购订单范围；已拒绝调用。");
+        }
+        String filter = references.stream().distinct().limit(100)
+                .map(reference -> referenceField + " eq '" + escape(reference) + "'")
+                .collect(Collectors.joining(" or ", "(", ")"));
         int top = Math.min(Math.max(requestedTop, 1), 100);
         String base = service.getUrl().replaceAll("/$", "") + "/" + service.getEntity();
         String query = "$filter=" + encode(filter) + "&$top=" + top + "&$orderby=" + encode(orderBy);

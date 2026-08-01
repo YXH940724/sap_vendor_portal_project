@@ -26,7 +26,9 @@ public class PortalProperties {
         if ("bearer".equals(sap.authMode) && blank(sap.bearerToken)) return "尚未配置 SAP_BEARER_TOKEN。";
         for (Service service : new Service[]{sap.businessPartner, sap.purchaseOrder, sap.asn, sap.materialDocument, sap.supplierInvoice}) {
             if (blank(service.url)) return "尚未配置 SAP OData 服务地址。";
-            if (blank(service.entity) || blank(service.supplierField)) return "尚未配置 OData 实体集或供应商隔离字段；为防止越权查询，已拒绝调用。";
+            if (blank(service.entity)) return "尚未配置 OData 实体集；为防止越权查询，已拒绝调用。";
+            if ("purchase_order".equals(service.scopeMode) && blank(service.referenceField)) return "采购订单关联范围查询尚未配置关联字段；为防止越权查询，已拒绝调用。";
+            if (!"purchase_order".equals(service.scopeMode) && blank(service.supplierField)) return "尚未配置供应商隔离字段；为防止越权查询，已拒绝调用。";
         }
         return null;
     }
@@ -61,9 +63,13 @@ public class PortalProperties {
         private String entity;
         private String supplierField;
         private String expand;
+        private String scopeMode = "direct";
+        private String referenceField;
         public String getUrl() { return url; } public void setUrl(String value) { url = value; }
         public String getEntity() { return entity; } public void setEntity(String value) { entity = value; }
         public String getSupplierField() { return supplierField; } public void setSupplierField(String value) { supplierField = value; }
         public String getExpand() { return expand; } public void setExpand(String value) { expand = value; }
+        public String getScopeMode() { return scopeMode; } public void setScopeMode(String value) { scopeMode = value; }
+        public String getReferenceField() { return referenceField; } public void setReferenceField(String value) { referenceField = value; }
     }
 }

@@ -4,6 +4,8 @@ import com.yxh.sapvendorportal.config.PortalProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -23,6 +25,13 @@ class ODataUrlBuilderTest {
     void addsConfiguredExpand() {
         var service = service(); service.setExpand("_PurchaseOrderItem");
         assertThat(ODataUrlBuilder.scopedQuery(service, "1000", "", "", "PurchaseOrder asc", 10).toString()).contains("$expand=_PurchaseOrderItem");
+    }
+    @Test
+    void buildsReferenceScopedQueryWithoutSupplierField() {
+        var service = service(); service.setSupplierField("");
+        var uri = ODataUrlBuilder.referenceScopedQuery(service, List.of("4500000010", "4500000020"), "PurchaseOrder", "PostingDate desc", 10);
+        assertThat(uri.toString()).contains("PurchaseOrder%20eq%20%274500000010%27")
+                .contains("or%20PurchaseOrder%20eq%20%274500000020%27");
     }
     private PortalProperties.Service service() { var service = new PortalProperties.Service(); service.setUrl("https://example.test/odata"); service.setEntity("PurchaseOrder"); service.setSupplierField("Supplier"); return service; }
 }

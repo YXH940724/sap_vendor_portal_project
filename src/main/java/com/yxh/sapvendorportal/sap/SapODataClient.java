@@ -33,6 +33,11 @@ public class SapODataClient {
         JsonNode payload = execute(request);
         return records(payload);
     }
+    public List<JsonNode> getByReferences(PortalProperties.Service service, List<String> references, String referenceField, String orderBy, int top) {
+        URI uri = ODataUrlBuilder.referenceScopedQuery(service, references, referenceField, orderBy, top);
+        HttpRequest request = baseRequest(uri).header("Accept", "application/json").GET().build();
+        return records(execute(request));
+    }
 
     public JsonNode createAsn(String vendorId, JsonNode input) {
         String path = properties.getSap().getAsnCreatePath();
@@ -43,6 +48,7 @@ public class SapODataClient {
         if (csrf.statusCode() >= 400) throw sapError(csrf);
         String csrfToken = csrf.headers().firstValue("x-csrf-token").orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 未返回 CSRF Token，不能创建 ASN。"));
         ObjectNode payload = input.deepCopy();
+        payload.remove("sourcePurchaseOrders");
         payload.put(field, vendorId);
         HttpRequest request = baseRequest(URI.create(base + "/" + path.replaceFirst("^/", "")))
                 .header("Accept", "application/json").header("Content-Type", "application/json").header("X-CSRF-Token", csrfToken)

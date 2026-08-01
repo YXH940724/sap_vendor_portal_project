@@ -41,9 +41,9 @@ public class ODataRecordMapper {
             case "purchaseOrders" -> {
                 alias(row, "MaterialDescription", "PurchaseOrderItemText", "MaterialName", "MaterialDescription");
                 alias(row, "OrderQuantity", "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
-                alias(row, "PurchaseOrderQuantityUnit", "PurchaseOrderQuantityUnit", "OrderQuantityUnit", "BaseUnit");
-                alias(row, "DeliveryDate", "ScheduleLineDeliveryDate", "DeliveryDate", "RequestedDeliveryDate");
-                alias(row, "PurchaseOrderStatus", "PurchaseOrderStatus", "OverallStatus", "LifecycleStatus", "Status");
+                alias(row, "PurchaseOrderQuantityUnit", "PurchaseOrderQuantityUnit", "OrderQuantityUnit", "BaseUnit", "UnitOfMeasure");
+                alias(row, "DeliveryDate", "ScheduleLineDeliveryDate", "DeliveryDate", "RequestedDeliveryDate", "ConfirmedDeliveryDate", "StatDeliveryDate");
+                alias(row, "PurchaseOrderStatus", "PurchaseOrderItemStatus", "PurchaseOrderStatus", "PurchasingDocumentStatus", "OverallStatus", "LifecycleStatus", "Status");
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
@@ -72,7 +72,15 @@ public class ODataRecordMapper {
     }
 
     private ObjectNode copy(JsonNode node) { return node != null && node.isObject() ? ((ObjectNode) node).deepCopy() : objectMapper.createObjectNode(); }
-    private JsonNode firstArray(JsonNode node, String... names) { for (String name : names) if (node.path(name).isArray()) return node.path(name); return null; }
+    private JsonNode firstArray(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode candidate = node.path(name);
+            if (candidate.isArray()) return candidate;
+            if (candidate.path("value").isArray()) return candidate.path("value");
+            if (candidate.path("results").isArray()) return candidate.path("results");
+        }
+        return null;
+    }
     private void copyIfMissing(ObjectNode target, JsonNode source, String... names) { for (String name : names) if (!target.has(name) && source.has(name)) target.set(name, source.get(name)); }
     private void alias(ObjectNode row, String target, String... candidates) { if (row.hasNonNull(target) && !row.path(target).asText().isBlank()) return; for (String candidate : candidates) if (row.hasNonNull(candidate) && !row.path(candidate).asText().isBlank()) { row.set(target, row.get(candidate)); return; } }
 }

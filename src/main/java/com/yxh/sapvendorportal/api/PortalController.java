@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,10 +38,15 @@ public class PortalController {
     @GetMapping("/dashboard") public Map<String, Object> dashboard(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
-        List<JsonNode> orders = recordMapper.map("purchaseOrders", sapClient.get(service("purchaseOrder"), scope.vendorId(), "", "PurchaseOrder", "LastChangeDateTime desc", 100));
-        List<JsonNode> asns = recordMapper.map("asns", sapClient.get(service("asn"), scope.vendorId(), "", "InbDelivery", "LastChangeDateTime desc", 100));
-        List<JsonNode> receipts = recordMapper.map("materialDocuments", sapClient.get(service("materialDocument"), scope.vendorId(), "", "MaterialDocument", "PostingDate desc", 100));
-        List<JsonNode> invoices = recordMapper.map("invoices", sapClient.get(service("supplierInvoice"), scope.vendorId(), "", "SupplierInvoice", "LastChangeDateTime desc", 100));
+        LoadResult ordersResult = safelyLoad("purchaseOrders", scope.vendorId(), "", 100, List.of());
+        List<JsonNode> orders = ordersResult.records();
+        List<String> purchaseOrders = purchaseOrderIds(orders);
+        LoadResult asnsResult = safelyLoad("asns", scope.vendorId(), "", 100, purchaseOrders);
+        LoadResult receiptsResult = safelyLoad("materialDocuments", scope.vendorId(), "", 100, purchaseOrders);
+        LoadResult invoicesResult = safelyLoad("invoices", scope.vendorId(), "", 100, purchaseOrders);
+        List<JsonNode> asns = asnsResult.records();
+        List<JsonNode> receipts = receiptsResult.records();
+        List<JsonNode> invoices = invoicesResult.records();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("vendorId", scope.vendorId());
         result.put("sampleLimit", 100);
@@ -52,15 +58,19 @@ public class PortalController {
         ));
         result.put("orderStatus", distribution(orders, "PurchaseOrderStatus", "OverallStatus", "Status"));
         result.put("asnStatus", distribution(asns, "OverallStatus", "InbDeliveryStatus", "Status"));
+        result.put("dataIssues", issues(Map.of("采购订单", ordersResult, "ASN / 发运", asnsResult, "收货凭证", receiptsResult, "结算对账", invoicesResult)));
         result.put("retrievedAt", Instant.now().toString());
         return result;
     }
     @GetMapping("/data/{resourceName}") public Map<String, Object> data(@PathVariable String resourceName, @RequestParam(defaultValue = "") String search, @RequestParam(defaultValue = "30") int top, HttpServletRequest request) {
         requireConfigured(); Resource resource = resources.get(resourceName); if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
-        var scope = scopeResolver.resolve(request); List<JsonNode> records = recordMapper.map(resourceName, sapClient.get(service(resource.serviceName()), scope.vendorId(), search, resource.searchField(), resource.orderBy(), top));
+        var scope = scopeResolver.resolve(request); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
         Map<String, Object> response = new LinkedHashMap<>(); response.put("resource", resourceName); response.put("vendorId", scope.vendorId()); response.put("records", records); response.put("count", records.size()); response.put("retrievedAt", Instant.now().toString()); return response;
     }
-    @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) { requireConfigured(); var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "result", sapClient.createAsn(scope.vendorId(), input)); }
+    @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) {
+        requireConfigured(); var scope = scopeResolver.resolve(request); validateAsnSources(input, scope.vendorId());
+        return Map.of("vendorId", scope.vendorId(), "result", sapClient.createAsn(scope.vendorId(), input));
+    }
     private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {
@@ -77,6 +87,43 @@ public class PortalController {
         values.entrySet().stream().limit(5).forEach(entry -> result.add(Map.of("label", entry.getKey(), "value", entry.getValue())));
         return result;
     }
+    private List<JsonNode> load(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
+        Resource resource = resources.get(resourceName);
+        if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
+        PortalProperties.Service target = service(resource.serviceName());
+        if ("purchase_order".equals(target.getScopeMode())) {
+            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
+            if (scopedOrders.isEmpty()) return List.of();
+            return recordMapper.map(resourceName, sapClient.getByReferences(target, scopedOrders, target.getReferenceField(), resource.orderBy(), top));
+        }
+        return recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
+    }
+    private List<JsonNode> loadPurchaseOrders(String vendorId, int top) {
+        return recordMapper.map("purchaseOrders", sapClient.get(service("purchaseOrder"), vendorId, "", "PurchaseOrder", "LastChangeDateTime desc", top));
+    }
+    private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
+        try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }
+        catch (ResponseStatusException exception) { return new LoadResult(List.of(), exception.getReason() == null ? "SAP 数据读取失败。" : exception.getReason()); }
+    }
+    private List<String> purchaseOrderIds(Collection<JsonNode> orders) {
+        LinkedHashSet<String> values = new LinkedHashSet<>();
+        orders.forEach(order -> { String value = order.path("PurchaseOrder").asText(); if (!value.isBlank()) values.add(value); });
+        return new ArrayList<>(values);
+    }
+    private List<Map<String, String>> issues(Map<String, LoadResult> results) {
+        List<Map<String, String>> result = new ArrayList<>();
+        results.forEach((name, value) -> { if (!value.issue().isBlank()) result.add(Map.of("name", name, "message", value.issue())); });
+        return result;
+    }
+    private void validateAsnSources(JsonNode input, String vendorId) {
+        LinkedHashSet<String> requested = new LinkedHashSet<>();
+        input.path("sourcePurchaseOrders").forEach(value -> { if (!value.asText().isBlank()) requested.add(value.asText()); });
+        input.path("items").forEach(item -> { String purchaseOrder = item.path("sourcePurchaseOrder").asText(); if (!purchaseOrder.isBlank()) requested.add(purchaseOrder); });
+        if (requested.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请至少选择一个采购订单行后再创建 ASN。");
+        List<String> allowed = purchaseOrderIds(loadPurchaseOrders(vendorId, 100));
+        if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
+    }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return null; }
     private record Resource(String serviceName, String searchField, String orderBy) { }
+    private record LoadResult(List<JsonNode> records, String issue) { }
 }
