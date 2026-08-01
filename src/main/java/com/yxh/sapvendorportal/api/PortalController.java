@@ -29,8 +29,8 @@ public class PortalController {
             "suppliers", new Resource("businessPartner", "BusinessPartner", "BusinessPartner asc"),
             "purchaseOrders", new Resource("purchaseOrder", "PurchaseOrder", "LastChangeDateTime desc"),
             "asns", new Resource("asn", "InbDelivery", "LastChangeDate desc"),
-            "materialDocuments", new Resource("materialDocument", "MaterialDocument", "LastChangeDateTime desc"),
-            "invoices", new Resource("supplierInvoice", "SupplierInvoice", "LastChangeDateTime desc")
+            "materialDocuments", new Resource("materialDocument", "MaterialDocument", "MaterialDocument desc"),
+            "invoices", new Resource("supplierInvoice", "SupplierInvoice", "SupplierInvoice desc")
     );
     public PortalController(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
 

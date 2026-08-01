@@ -19,6 +19,7 @@ public class ODataRecordMapper {
         List<JsonNode> result = new ArrayList<>();
         for (JsonNode record : source) {
             if ("purchaseOrders".equals(resource)) result.addAll(flattenPurchaseOrder(record));
+            else if ("asns".equals(resource)) result.addAll(flattenAsn(record));
             else if ("invoices".equals(resource)) result.addAll(flattenInvoice(record));
             else result.add(normalize(resource, copy(record)));
         }
@@ -51,6 +52,18 @@ public class ODataRecordMapper {
         return rows;
     }
 
+    private List<JsonNode> flattenAsn(JsonNode header) {
+        JsonNode items = firstArray(header, "to_DeliveryDocumentItem", "to_InbDeliveryItem");
+        if (items == null) return List.of(normalize("asns", copy(header)));
+        List<JsonNode> rows = new ArrayList<>();
+        for (JsonNode item : items) {
+            ObjectNode row = copy(item);
+            copyIfMissing(row, header, "DeliveryDocument", "Supplier", "DeliveryDate", "OverallGoodsMovementStatus", "OverallSDProcessStatus", "LastChangeDate", "DeliveryDocumentBySupplier");
+            rows.add(normalize("asns", row));
+        }
+        return rows;
+    }
+
     private ObjectNode normalize(String resource, ObjectNode row) {
         switch (resource) {
             case "purchaseOrders" -> {
@@ -68,12 +81,17 @@ public class ODataRecordMapper {
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
+                alias(row, "PurchaseOrder", "PurchaseOrder", "ReferenceSDDocument");
+                alias(row, "PurchaseOrderItem", "PurchaseOrderItem", "ReferenceSDDocumentItem");
                 alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
                 alias(row, "OverallStatus", "OverallGoodsMovementStatus", "OverallSDProcessStatus", "OverallStatus", "InbDeliveryStatus", "Status");
                 alias(row, "MaterialDescription", "MaterialDescription", "ItemText", "MaterialName");
             }
             case "materialDocuments" -> {
+                JsonNode header = row.path("to_MaterialDocumentHeader");
+                if (header.isObject()) copyIfMissing(row, header, "PostingDate", "DocumentDate", "MaterialDocumentHeaderText");
                 alias(row, "MaterialDocument", "MaterialDocument", "MaterialDocumentYear");
+                alias(row, "PurchaseOrder", "PurchaseOrder", "PurchaseOrderNumber");
                 alias(row, "MaterialDescription", "MaterialDescription", "MaterialDocumentItemText", "ItemText");
                 alias(row, "QuantityInEntryUnit", "QuantityInEntryUnit", "Quantity", "EntryQuantity");
                 alias(row, "EntryUnit", "EntryUnit", "QuantityUnit", "BaseUnit");

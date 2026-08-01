@@ -27,12 +27,14 @@ portal:
       url: ${SAP_ASN_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_INBOUND_DELIVERY_SRV;v=0002}
       entity: A_InbDeliveryHeader
       supplier-field: Supplier
+      expand: to_DeliveryDocumentItem
     material-document:
       url: ${SAP_MATERIAL_DOCUMENT_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_MATERIAL_DOCUMENT_SRV}
       entity: A_MaterialDocumentItem
       supplier-field: Supplier
       scope-mode: purchase_order
       reference-field: PurchaseOrder
+      expand: to_MaterialDocumentHeader
     supplier-invoice:
       url: ${SAP_SUPPLIER_INVOICE_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_SUPPLIERINVOICE_PROCESS_SRV}
       entity: A_SupplierInvoice

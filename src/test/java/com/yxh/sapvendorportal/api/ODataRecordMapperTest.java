@@ -86,4 +86,33 @@ class ODataRecordMapperTest {
         assertThat(row.path("InbDelivery").asText()).isEqualTo("180000001");
         assertThat(row.path("OverallStatus").asText()).isEqualTo("C");
     }
+
+    @Test
+    void flattensInboundDeliveryItemsAndCarriesHeaderStatus() throws Exception {
+        var delivery = objectMapper.readTree("""
+                {"DeliveryDocument":"180000001","DeliveryDate":"/Date(1786233600000)/","OverallGoodsMovementStatus":"A",
+                 "to_DeliveryDocumentItem":{"results":[
+                   {"DeliveryDocumentItem":"000010","ReferenceSDDocument":"4500001001","ReferenceSDDocumentItem":"00010","Material":"MAT-01"}
+                 ]}}
+                """);
+
+        var result = mapper.map("asns", List.of(delivery));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().path("PurchaseOrder").asText()).isEqualTo("4500001001");
+        assertThat(result.getFirst().path("PurchaseOrderItem").asText()).isEqualTo("00010");
+        assertThat(result.getFirst().path("OverallStatus").asText()).isEqualTo("A");
+    }
+
+    @Test
+    void copiesMaterialDocumentPostingDateFromExpandedHeader() throws Exception {
+        var item = objectMapper.readTree("""
+                {"MaterialDocument":"5000000001","MaterialDocumentItem":"0001","PurchaseOrder":"4500001001",
+                 "to_MaterialDocumentHeader":{"PostingDate":"/Date(1786233600000)/"}}
+                """);
+
+        var row = mapper.map("materialDocuments", List.of(item)).getFirst();
+
+        assertThat(row.path("PostingDate").asText()).isEqualTo("/Date(1786233600000)/");
+    }
 }
