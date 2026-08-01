@@ -22,6 +22,7 @@ public class PortalController {
     private final PortalProperties properties;
     private final VendorScopeResolver scopeResolver;
     private final SapODataClient sapClient;
+    private final ODataRecordMapper recordMapper;
     private final Map<String, Resource> resources = Map.of(
             "suppliers", new Resource("businessPartner", "BusinessPartner", "BusinessPartner asc"),
             "purchaseOrders", new Resource("purchaseOrder", "PurchaseOrder", "LastChangeDateTime desc"),
@@ -29,17 +30,17 @@ public class PortalController {
             "materialDocuments", new Resource("materialDocument", "MaterialDocument", "LastChangeDateTime desc"),
             "invoices", new Resource("supplierInvoice", "SupplierInvoice", "LastChangeDateTime desc")
     );
-    public PortalController(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; }
+    public PortalController(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
 
     @GetMapping("/health") public Map<String, Object> health() { String issue = properties.validationIssue(); return Map.of("ok", true, "configured", issue == null, "issue", issue == null ? "" : issue); }
     @GetMapping("/session") public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "stateless_portal"); }
     @GetMapping("/dashboard") public Map<String, Object> dashboard(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
-        List<JsonNode> orders = sapClient.get(service("purchaseOrder"), scope.vendorId(), "", "PurchaseOrder", "LastChangeDateTime desc", 100);
-        List<JsonNode> asns = sapClient.get(service("asn"), scope.vendorId(), "", "InbDelivery", "LastChangeDateTime desc", 100);
-        List<JsonNode> receipts = sapClient.get(service("materialDocument"), scope.vendorId(), "", "MaterialDocument", "PostingDate desc", 100);
-        List<JsonNode> invoices = sapClient.get(service("supplierInvoice"), scope.vendorId(), "", "SupplierInvoice", "LastChangeDateTime desc", 100);
+        List<JsonNode> orders = recordMapper.map("purchaseOrders", sapClient.get(service("purchaseOrder"), scope.vendorId(), "", "PurchaseOrder", "LastChangeDateTime desc", 100));
+        List<JsonNode> asns = recordMapper.map("asns", sapClient.get(service("asn"), scope.vendorId(), "", "InbDelivery", "LastChangeDateTime desc", 100));
+        List<JsonNode> receipts = recordMapper.map("materialDocuments", sapClient.get(service("materialDocument"), scope.vendorId(), "", "MaterialDocument", "PostingDate desc", 100));
+        List<JsonNode> invoices = recordMapper.map("invoices", sapClient.get(service("supplierInvoice"), scope.vendorId(), "", "SupplierInvoice", "LastChangeDateTime desc", 100));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("vendorId", scope.vendorId());
         result.put("sampleLimit", 100);
@@ -56,7 +57,7 @@ public class PortalController {
     }
     @GetMapping("/data/{resourceName}") public Map<String, Object> data(@PathVariable String resourceName, @RequestParam(defaultValue = "") String search, @RequestParam(defaultValue = "30") int top, HttpServletRequest request) {
         requireConfigured(); Resource resource = resources.get(resourceName); if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
-        var scope = scopeResolver.resolve(request); List<JsonNode> records = sapClient.get(service(resource.serviceName()), scope.vendorId(), search, resource.searchField(), resource.orderBy(), top);
+        var scope = scopeResolver.resolve(request); List<JsonNode> records = recordMapper.map(resourceName, sapClient.get(service(resource.serviceName()), scope.vendorId(), search, resource.searchField(), resource.orderBy(), top));
         Map<String, Object> response = new LinkedHashMap<>(); response.put("resource", resourceName); response.put("vendorId", scope.vendorId()); response.put("records", records); response.put("count", records.size()); response.put("retrievedAt", Instant.now().toString()); return response;
     }
     @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) { requireConfigured(); var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "result", sapClient.createAsn(scope.vendorId(), input)); }

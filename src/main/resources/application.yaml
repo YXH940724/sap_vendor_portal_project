@@ -22,13 +22,14 @@ portal:
       url: ${SAP_PURCHASE_ORDER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata4/sap/api_purchaseorder_2/srvd_a2x/sap/purchaseorder/0001/}
       entity: ${SAP_PO_ENTITY:PurchaseOrder}
       supplier-field: ${SAP_PO_SUPPLIER_FIELD:Supplier}
+      expand: ${SAP_PO_EXPAND:_PurchaseOrderItem}
     asn:
       url: ${SAP_ASN_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_INBOUND_DELIVERY_SRV;v=0002}
       entity: ${SAP_ASN_ENTITY:A_InbDeliveryHeader}
       supplier-field: ${SAP_ASN_SUPPLIER_FIELD:Supplier}
     material-document:
       url: ${SAP_MATERIAL_DOCUMENT_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_MATERIAL_DOCUMENT_SRV}
-      entity: ${SAP_MATERIAL_ENTITY:A_MaterialDocumentHeader}
+      entity: ${SAP_MATERIAL_ENTITY:A_MaterialDocumentItem}
       supplier-field: ${SAP_MATERIAL_SUPPLIER_FIELD:Supplier}
     supplier-invoice:
       url: ${SAP_SUPPLIER_INVOICE_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_SUPPLIERINVOICE_PROCESS_SRV}

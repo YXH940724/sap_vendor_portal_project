@@ -1,0 +1,15 @@
+/* 供应商主数据单页：身份摘要与字段网格 */
+.supplier-profile { overflow: hidden; }
+.supplier-profile > header { display: flex; align-items: center; gap: 14px; padding: 24px; border-bottom: 1px solid #e2e8f0; background: linear-gradient(110deg, #f8fbff, #ffffff); }
+.profile-avatar { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 auto; border-radius: 50%; color: #0079b8; background: #e8f4fb; font-size: 19px; font-weight: 700; }
+.supplier-profile > header > div:nth-child(2) { min-width: 0; flex: 1; }
+.supplier-profile > header small { display: block; color: #008fd3; font-size: 10px; font-weight: 700; letter-spacing: .8px; }
+.supplier-profile > header h2 { margin: 3px 0; color: #1e293b; font-size: 20px; }
+.supplier-profile > header p { margin: 0; color: #64748b; font-size: 13px; }
+.supplier-profile > section { padding: 24px; }
+.supplier-profile h3 { margin: 0 0 16px; color: #334155; font-size: 15px; }
+.profile-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.profile-grid > div { min-height: 74px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; }
+.profile-grid dt { color: #64748b; font-size: 12px; }
+.profile-grid dd { margin: 6px 0 0; color: #1e293b; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 768px) { .supplier-profile > header { align-items: flex-start; padding: 18px; }.supplier-profile > header h2 { font-size: 17px; }.supplier-profile > section { padding: 18px; }.profile-grid { grid-template-columns: 1fr; } }

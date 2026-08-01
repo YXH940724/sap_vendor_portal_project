@@ -19,6 +19,7 @@ public final class ODataUrlBuilder {
         int top = Math.min(Math.max(requestedTop, 1), 100);
         String base = service.getUrl().replaceAll("/$", "") + "/" + service.getEntity();
         String query = "$filter=" + encode(filter) + "&$top=" + top + "&$orderby=" + encode(orderBy);
+        if (!blank(service.getExpand())) query += "&$expand=" + encode(service.getExpand());
         return URI.create(base + "?" + query);
     }
     private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20"); }

@@ -19,5 +19,10 @@ class ODataUrlBuilderTest {
         var service = service(); service.setSupplierField("");
         assertThatThrownBy(() -> ODataUrlBuilder.scopedQuery(service, "1000", "", "id", "id asc", 1)).isInstanceOf(ResponseStatusException.class);
     }
+    @Test
+    void addsConfiguredExpand() {
+        var service = service(); service.setExpand("_PurchaseOrderItem");
+        assertThat(ODataUrlBuilder.scopedQuery(service, "1000", "", "", "PurchaseOrder asc", 10).toString()).contains("$expand=_PurchaseOrderItem");
+    }
     private PortalProperties.Service service() { var service = new PortalProperties.Service(); service.setUrl("https://example.test/odata"); service.setEntity("PurchaseOrder"); service.setSupplierField("Supplier"); return service; }
 }

@@ -60,8 +60,10 @@ public class PortalProperties {
         private String url;
         private String entity;
         private String supplierField;
+        private String expand;
         public String getUrl() { return url; } public void setUrl(String value) { url = value; }
         public String getEntity() { return entity; } public void setEntity(String value) { entity = value; }
         public String getSupplierField() { return supplierField; } public void setSupplierField(String value) { supplierField = value; }
+        public String getExpand() { return expand; } public void setExpand(String value) { expand = value; }
     }
 }
