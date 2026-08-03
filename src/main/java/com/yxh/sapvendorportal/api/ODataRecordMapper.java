@@ -100,6 +100,7 @@ public class ODataRecordMapper {
                 alias(row, "SupplierInvoice", "SupplierInvoice", "SupplierInvoiceID", "InvoiceNumber");
                 alias(row, "SupplierInvoiceStatus", "SupplierInvoiceStatus", "OverallStatus", "Status");
                 alias(row, "InvoiceGrossAmount", "InvoiceGrossAmount", "GrossAmount", "InvoiceAmount");
+                alias(row, "MaterialDescription", "MaterialDescription", "SupplierInvoiceItemText", "ItemText", "MaterialName");
             }
             case "suppliers" -> {
                 alias(row, "SupplierName", "BusinessPartnerFullName", "OrganizationBPName1", "BusinessPartnerName", "SupplierName");

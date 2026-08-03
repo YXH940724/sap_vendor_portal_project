@@ -17,10 +17,12 @@ import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api")
 public class PortalController {
+    private static final Set<String> GOODS_RECEIPT_MOVEMENT_TYPES = Set.of("101", "102", "122", "123", "161", "162");
     private final PortalProperties properties;
     private final VendorScopeResolver scopeResolver;
     private final SapODataClient sapClient;
@@ -93,16 +95,22 @@ public class PortalController {
         if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
         if ("purchaseOrders".equals(resourceName)) return loadPurchaseOrders(vendorId, top);
         PortalProperties.Service target = service(resource.serviceName());
+        if ("asns".equals(resourceName)) {
+            List<JsonNode> asns = recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
+            return enrichWithPurchaseOrderItems(asns, vendorId, top);
+        }
         if ("invoices".equals(resourceName)) {
-            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
+            List<JsonNode> orderLines = loadPurchaseOrders(vendorId, top);
+            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(orderLines) : purchaseOrders;
             if (scopedOrders.isEmpty()) return List.of();
             List<JsonNode> invoices = recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
-            return invoices.stream().filter(invoice -> scopedOrders.contains(invoice.path("PurchaseOrder").asText())).toList();
+            return enrichWithPurchaseOrderItems(invoices.stream().filter(invoice -> scopedOrders.contains(invoice.path("PurchaseOrder").asText())).toList(), orderLines);
         }
         if ("purchase_order".equals(target.getScopeMode())) {
             List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
             if (scopedOrders.isEmpty()) return List.of();
-            return recordMapper.map(resourceName, sapClient.getByReferences(target, scopedOrders, target.getReferenceField(), resource.orderBy(), top));
+            List<JsonNode> records = recordMapper.map(resourceName, sapClient.getByReferences(target, scopedOrders, target.getReferenceField(), resource.orderBy(), top));
+            return "materialDocuments".equals(resourceName) ? records.stream().filter(this::isGoodsReceiptMovement).toList() : records;
         }
         return recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
     }
@@ -130,6 +138,24 @@ public class PortalController {
         }
         return result;
     }
+    private List<JsonNode> enrichWithPurchaseOrderItems(List<JsonNode> records, String vendorId, int top) {
+        return enrichWithPurchaseOrderItems(records, loadPurchaseOrders(vendorId, top));
+    }
+    private List<JsonNode> enrichWithPurchaseOrderItems(List<JsonNode> records, List<JsonNode> orderLines) {
+        Map<String, JsonNode> linesByKey = new LinkedHashMap<>();
+        orderLines.forEach(line -> linesByKey.put(purchaseOrderLineKey(line), line));
+        return records.stream().map(record -> enrichWithPurchaseOrderItem(record, linesByKey.get(purchaseOrderLineKey(record)))).toList();
+    }
+    private JsonNode enrichWithPurchaseOrderItem(JsonNode record, JsonNode orderLine) {
+        if (orderLine == null || !record.isObject()) return record;
+        ObjectNode result = ((ObjectNode) record).deepCopy();
+        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity")) {
+            if (!result.has(field) || result.path(field).asText().isBlank()) result.set(field, orderLine.path(field));
+        }
+        return result;
+    }
+    private String purchaseOrderLineKey(JsonNode record) { return record.path("PurchaseOrder").asText() + ":" + record.path("PurchaseOrderItem").asText(); }
+    private boolean isGoodsReceiptMovement(JsonNode record) { return GOODS_RECEIPT_MOVEMENT_TYPES.contains(record.path("GoodsMovementType").asText()); }
     private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }
         catch (ResponseStatusException exception) { return new LoadResult(List.of(), exception.getReason() == null ? "SAP 数据读取失败。" : exception.getReason()); }

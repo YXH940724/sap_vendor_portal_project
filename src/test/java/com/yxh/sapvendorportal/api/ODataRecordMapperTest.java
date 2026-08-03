@@ -76,6 +76,23 @@ class ODataRecordMapperTest {
     }
 
     @Test
+    void normalizesInvoiceAndAsnItemTextAsMaterialDescription() throws Exception {
+        var invoice = objectMapper.readTree("""
+                {"SupplierInvoice":"5100000002","to_SuplrInvcItemPurOrdRef":{"results":[
+                  {"PurchaseOrder":"4500001001","PurchaseOrderItem":"00010","SupplierInvoiceItemText":"轴承结算项目"}
+                ]}}
+                """);
+        var asn = objectMapper.readTree("""
+                {"DeliveryDocument":"1800000002","to_DeliveryDocumentItem":{"results":[
+                  {"ReferenceSDDocument":"4500001001","ReferenceSDDocumentItem":"00010","ItemText":"轴承发运行"}
+                ]}}
+                """);
+
+        assertThat(mapper.map("invoices", List.of(invoice)).getFirst().path("MaterialDescription").asText()).isEqualTo("轴承结算项目");
+        assertThat(mapper.map("asns", List.of(asn)).getFirst().path("MaterialDescription").asText()).isEqualTo("轴承发运行");
+    }
+
+    @Test
     void normalizesInboundDeliveryStandardHeaderFields() throws Exception {
         var delivery = objectMapper.readTree("""
                 {"DeliveryDocument":"180000001","DeliveryDate":"2026-08-08","OverallGoodsMovementStatus":"C"}
