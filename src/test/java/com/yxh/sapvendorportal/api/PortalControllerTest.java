@@ -109,7 +109,31 @@ class PortalControllerTest {
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getReason()).contains("可结算数量"));
     }
 
+    @Test
+    void treats161AsReturnAnd162AsReturnReversalInSettlementQuantity() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = reconciliationClient(true);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        Map<String, Object> response = controller.reconciliation(mock(HttpServletRequest.class));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> records = (List<Map<String, Object>>) response.get("records");
+
+        assertThat(records).filteredOn(row -> "5000000001".equals(row.get("materialDocument"))).singleElement().satisfies(row -> {
+            assertThat(row.get("receivedQuantity")).isEqualTo("8");
+            assertThat(row.get("remainingQuantity")).isEqualTo("4");
+        });
+        assertThat(records).filteredOn(row -> "161".equals(row.get("goodsMovementType"))).singleElement().extracting(row -> row.get("settlementStatus")).isEqualTo("退货");
+        assertThat(records).filteredOn(row -> "162".equals(row.get("goodsMovementType"))).singleElement().extracting(row -> row.get("settlementStatus")).isEqualTo("退货冲销");
+    }
+
     private SapODataClient reconciliationClient() throws Exception {
+        return reconciliationClient(false);
+    }
+
+    private SapODataClient reconciliationClient(boolean includesReturnAndReversal) throws Exception {
         SapODataClient sapClient = mock(SapODataClient.class);
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
@@ -120,7 +144,11 @@ class PortalControllerTest {
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
             if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"PurchaseOrderQuantityUnit\":\"EA\"}"));
-            return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}"));
+            JsonNode receipt = objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}");
+            if (!includesReturnAndReversal) return List.of(receipt);
+            return List.of(receipt,
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000002\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"161\",\"QuantityInEntryUnit\":3,\"EntryUnit\":\"EA\"}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000003\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"162\",\"QuantityInEntryUnit\":1,\"EntryUnit\":\"EA\"}"));
         });
         return sapClient;
     }
