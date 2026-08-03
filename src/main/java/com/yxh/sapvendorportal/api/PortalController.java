@@ -107,10 +107,14 @@ public class PortalController {
             return enrichWithPurchaseOrderItems(invoices.stream().filter(invoice -> scopedOrders.contains(invoice.path("PurchaseOrder").asText())).toList(), orderLines);
         }
         if ("purchase_order".equals(target.getScopeMode())) {
-            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(loadPurchaseOrders(vendorId, top)) : purchaseOrders;
+            List<JsonNode> orderLines = loadPurchaseOrders(vendorId, top);
+            List<String> scopedOrders = purchaseOrders.isEmpty() ? purchaseOrderIds(orderLines) : purchaseOrders;
             if (scopedOrders.isEmpty()) return List.of();
             List<JsonNode> records = recordMapper.map(resourceName, sapClient.getByReferences(target, scopedOrders, target.getReferenceField(), resource.orderBy(), top));
-            return "materialDocuments".equals(resourceName) ? records.stream().filter(this::isGoodsReceiptMovement).toList() : records;
+            if ("materialDocuments".equals(resourceName)) {
+                return enrichWithPurchaseOrderItems(records.stream().filter(this::isGoodsReceiptMovement).toList(), orderLines);
+            }
+            return records;
         }
         return recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
     }
@@ -150,11 +154,16 @@ public class PortalController {
         if (orderLine == null || !record.isObject()) return record;
         ObjectNode result = ((ObjectNode) record).deepCopy();
         for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity")) {
-            if (!result.has(field) || result.path(field).asText().isBlank()) result.set(field, orderLine.path(field));
+            JsonNode source = orderLine.path(field);
+            if ((!result.has(field) || result.path(field).asText().isBlank()) && !source.isMissingNode() && !source.isNull() && !source.asText().isBlank()) result.set(field, source);
         }
         return result;
     }
-    private String purchaseOrderLineKey(JsonNode record) { return record.path("PurchaseOrder").asText() + ":" + record.path("PurchaseOrderItem").asText(); }
+    private String purchaseOrderLineKey(JsonNode record) { return record.path("PurchaseOrder").asText().trim() + ":" + canonicalItemNumber(record.path("PurchaseOrderItem").asText()); }
+    private String canonicalItemNumber(String value) {
+        String item = value == null ? "" : value.trim();
+        return item.replaceFirst("^0+(?!$)", "");
+    }
     private boolean isGoodsReceiptMovement(JsonNode record) { return GOODS_RECEIPT_MOVEMENT_TYPES.contains(record.path("GoodsMovementType").asText()); }
     private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }

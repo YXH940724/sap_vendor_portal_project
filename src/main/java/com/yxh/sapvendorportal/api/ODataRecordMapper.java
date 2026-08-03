@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -73,11 +74,8 @@ public class ODataRecordMapper {
                 alias(row, "OrderQuantity", "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
                 alias(row, "PurchaseOrderQuantityUnit", "PurchaseOrderQuantityUnit", "OrderQuantityUnit", "BaseUnit", "UnitOfMeasure");
                 alias(row, "DeliveryDate", "ScheduleLineDeliveryDate", "DeliveryDate", "RequestedDeliveryDate", "ConfirmedDeliveryDate", "StatDeliveryDate");
+                derivePurchaseOrderStatus(row);
                 alias(row, "PurchaseOrderStatus", "PurchaseOrderItemStatus", "PurchaseOrderStatus", "PurchasingDocumentStatus", "OverallStatus", "LifecycleStatus", "Status");
-                if (!row.hasNonNull("PurchaseOrderStatus") || row.path("PurchaseOrderStatus").asText().isBlank()) {
-                    if (row.path("IsCompletelyDelivered").asBoolean(false)) row.put("PurchaseOrderStatus", "已完成");
-                    else if (!row.path("PurchasingDocumentDeletionCode").asText().isBlank()) row.put("PurchaseOrderStatus", "已取消");
-                }
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
@@ -85,7 +83,7 @@ public class ODataRecordMapper {
                 alias(row, "PurchaseOrderItem", "PurchaseOrderItem", "ReferenceSDDocumentItem");
                 alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
                 alias(row, "OverallStatus", "OverallGoodsMovementStatus", "OverallSDProcessStatus", "OverallStatus", "InbDeliveryStatus", "Status");
-                alias(row, "MaterialDescription", "MaterialDescription", "ItemText", "MaterialName");
+                alias(row, "MaterialDescription", "MaterialDescription", "DeliveryDocumentItemText", "ItemText", "MaterialName", "ProductDescription");
             }
             case "materialDocuments" -> {
                 JsonNode header = row.path("to_MaterialDocumentHeader");
@@ -123,4 +121,35 @@ public class ODataRecordMapper {
     }
     private void copyIfMissing(ObjectNode target, JsonNode source, String... names) { for (String name : names) if (!target.has(name) && source.has(name)) target.set(name, source.get(name)); }
     private void alias(ObjectNode row, String target, String... candidates) { if (row.hasNonNull(target) && !row.path(target).asText().isBlank()) return; for (String candidate : candidates) if (row.hasNonNull(candidate) && !row.path(candidate).asText().isBlank()) { row.set(target, row.get(candidate)); return; } }
+    private void derivePurchaseOrderStatus(ObjectNode row) {
+        if (!row.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
+            row.put("PurchaseOrderStatus", "已取消");
+            return;
+        }
+        if (row.path("IsCompletelyDelivered").asBoolean(false)) {
+            row.put("PurchaseOrderStatus", "已完成");
+            return;
+        }
+        BigDecimal outstanding = firstDecimal(row, "StillToBeDeliveredQuantity", "OpenPurchaseOrderQuantity", "OpenQuantity");
+        if (outstanding != null) {
+            if (outstanding.signum() <= 0) {
+                row.put("PurchaseOrderStatus", "已完成");
+                return;
+            }
+            BigDecimal ordered = firstDecimal(row, "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
+            row.put("PurchaseOrderStatus", ordered != null && outstanding.compareTo(ordered) < 0 ? "部分收货" : "待交货");
+            return;
+        }
+        if (row.hasNonNull("IsCompletelyDelivered")) row.put("PurchaseOrderStatus", "待交货");
+    }
+    private BigDecimal firstDecimal(ObjectNode row, String... names) {
+        for (String name : names) {
+            JsonNode value = row.path(name);
+            if (!value.isMissingNode() && !value.isNull() && !value.asText().isBlank()) {
+                try { return new BigDecimal(value.asText()); }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        return null;
+    }
 }

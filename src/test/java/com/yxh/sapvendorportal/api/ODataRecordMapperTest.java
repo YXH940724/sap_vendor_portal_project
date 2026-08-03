@@ -93,6 +93,46 @@ class ODataRecordMapperTest {
     }
 
     @Test
+    void normalizesStandardDeliveryAndMaterialDocumentTextsAsMaterialDescriptions() throws Exception {
+        var asn = objectMapper.readTree("""
+                {"DeliveryDocument":"1800000003","to_DeliveryDocumentItem":{"results":[
+                  {"ReferenceSDDocument":"4500001001","ReferenceSDDocumentItem":"000010","DeliveryDocumentItemText":"轴承发运项目"}
+                ]}}
+                """);
+        var receipt = objectMapper.readTree("""
+                {"MaterialDocument":"5000000002","MaterialDocumentItem":"0001","PurchaseOrder":"4500001001",
+                 "PurchaseOrderItem":"000010","MaterialDocumentItemText":"轴承收货项目"}
+                """);
+
+        assertThat(mapper.map("asns", List.of(asn)).getFirst().path("MaterialDescription").asText()).isEqualTo("轴承发运项目");
+        assertThat(mapper.map("materialDocuments", List.of(receipt)).getFirst().path("MaterialDescription").asText()).isEqualTo("轴承收货项目");
+    }
+
+    @Test
+    void derivesPartiallyReceivedStatusFromOutstandingDeliveryQuantity() throws Exception {
+        var item = objectMapper.readTree("""
+                {"PurchaseOrder":"4500005679","PurchaseOrderItem":"00020","OrderQuantity":12,
+                 "StillToBeDeliveredQuantity":5,"PurchaseOrderItemStatus":"C","IsCompletelyDelivered":false}
+                """);
+
+        var row = mapper.map("purchaseOrders", List.of(item)).getFirst();
+
+        assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("部分收货");
+    }
+
+    @Test
+    void usesNotCompletelyDeliveredIndicatorBeforeAnAmbiguousRawStatus() throws Exception {
+        var item = objectMapper.readTree("""
+                {"PurchaseOrder":"4500005680","PurchaseOrderItem":"00030",
+                 "PurchaseOrderItemStatus":"C","IsCompletelyDelivered":false}
+                """);
+
+        var row = mapper.map("purchaseOrders", List.of(item)).getFirst();
+
+        assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("待交货");
+    }
+
+    @Test
     void normalizesInboundDeliveryStandardHeaderFields() throws Exception {
         var delivery = objectMapper.readTree("""
                 {"DeliveryDocument":"180000001","DeliveryDate":"2026-08-08","OverallGoodsMovementStatus":"C"}
