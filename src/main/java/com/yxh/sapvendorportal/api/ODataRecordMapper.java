@@ -47,7 +47,7 @@ public class ODataRecordMapper {
         List<JsonNode> rows = new ArrayList<>();
         for (JsonNode item : items) {
             ObjectNode row = copy(item);
-            copyIfMissing(row, header, "SupplierInvoice", "FiscalYear", "DocumentDate", "PostingDate", "InvoiceGrossAmount", "DocumentCurrency", "SupplierInvoiceStatus", "InvoicingParty", "CompanyCode");
+            copyIfMissing(row, header, "SupplierInvoice", "FiscalYear", "DocumentDate", "PostingDate", "InvoiceGrossAmount", "DocumentCurrency", "SupplierInvoiceStatus", "InvoicingParty", "CompanyCode", "SupplierInvoiceIsCreditMemo");
             rows.add(normalize("invoices", row));
         }
         return rows;
@@ -88,7 +88,8 @@ public class ODataRecordMapper {
             case "materialDocuments" -> {
                 JsonNode header = row.path("to_MaterialDocumentHeader");
                 if (header.isObject()) copyIfMissing(row, header, "PostingDate", "DocumentDate", "MaterialDocumentHeaderText");
-                alias(row, "MaterialDocument", "MaterialDocument", "MaterialDocumentYear");
+                alias(row, "MaterialDocument", "MaterialDocument");
+                alias(row, "MaterialDocumentYear", "MaterialDocumentYear", "Year");
                 alias(row, "PurchaseOrder", "PurchaseOrder", "PurchaseOrderNumber");
                 alias(row, "MaterialDescription", "MaterialDescription", "MaterialDocumentItemText", "ItemText");
                 alias(row, "QuantityInEntryUnit", "QuantityInEntryUnit", "Quantity", "EntryQuantity");
@@ -99,6 +100,10 @@ public class ODataRecordMapper {
                 alias(row, "SupplierInvoiceStatus", "SupplierInvoiceStatus", "OverallStatus", "Status");
                 alias(row, "InvoiceGrossAmount", "InvoiceGrossAmount", "GrossAmount", "InvoiceAmount");
                 alias(row, "MaterialDescription", "MaterialDescription", "SupplierInvoiceItemText", "ItemText", "MaterialName");
+                alias(row, "QuantityInPurchaseOrderUnit", "QuantityInPurchaseOrderUnit", "SupplierInvoiceItemQuantity", "Quantity", "QuantityInEntryUnit");
+                alias(row, "ReferenceDocument", "ReferenceDocument", "MaterialDocument", "GoodsReceiptDocument");
+                alias(row, "ReferenceDocumentYear", "ReferenceDocumentYear", "ReferenceDocumentFiscalYear", "MaterialDocumentYear");
+                alias(row, "ReferenceDocumentItem", "ReferenceDocumentItem", "MaterialDocumentItem", "GoodsReceiptDocumentItem");
             }
             case "suppliers" -> {
                 alias(row, "SupplierName", "BusinessPartnerFullName", "OrganizationBPName1", "BusinessPartnerName", "SupplierName");

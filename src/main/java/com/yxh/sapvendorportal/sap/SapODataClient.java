@@ -52,6 +52,18 @@ public class SapODataClient {
         return execute(request);
     }
 
+    public JsonNode createSupplierInvoice(String vendorId, JsonNode input) {
+        String base = properties.getSap().getSupplierInvoice().getUrl().replaceAll("/$", "");
+        HttpResponse<String> csrf = send(baseRequest(URI.create(base)).header("X-CSRF-Token", "Fetch").GET().build());
+        if (csrf.statusCode() >= 400) throw sapError(csrf);
+        String csrfToken = csrf.headers().firstValue("x-csrf-token").orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 未返回 CSRF Token，不能创建供应商发票。"));
+        ObjectNode payload = supplierInvoicePayload(vendorId, input);
+        HttpRequest request = baseRequest(URI.create(base + "/A_SupplierInvoice"))
+                .header("Accept", "application/json").header("Content-Type", "application/json").header("X-CSRF-Token", csrfToken)
+                .POST(HttpRequest.BodyPublishers.ofString(write(payload), StandardCharsets.UTF_8)).build();
+        return execute(request);
+    }
+
     private ObjectNode inboundDeliveryPayload(String vendorId, JsonNode input) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("Supplier", vendorId);
@@ -72,10 +84,43 @@ public class SapODataClient {
         payload.set("to_DeliveryDocumentItem", itemContainer);
         return payload;
     }
+    private ObjectNode supplierInvoicePayload(String vendorId, JsonNode input) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("CompanyCode", input.path("companyCode").asText());
+        payload.put("DocumentDate", odataDateTime(input.path("documentDate").asText()));
+        payload.put("PostingDate", odataDateTime(input.path("postingDate").asText()));
+        payload.put("SupplierInvoiceIDByInvcgParty", input.path("invoiceReference").asText());
+        payload.put("InvoicingParty", vendorId);
+        payload.put("DocumentCurrency", input.path("documentCurrency").asText());
+        payload.set("InvoiceGrossAmount", input.path("grossAmount"));
+        payload.put("TaxIsCalculatedAutomatically", true);
+        ObjectNode itemContainer = objectMapper.createObjectNode();
+        ArrayNode items = objectMapper.createArrayNode();
+        int itemNumber = 1;
+        for (JsonNode source : input.path("items")) {
+            ObjectNode item = objectMapper.createObjectNode();
+            item.put("SupplierInvoiceItem", String.format("%05d", itemNumber++));
+            copyText(source, item, "sourcePurchaseOrder", "PurchaseOrder");
+            copyText(source, item, "sourcePurchaseOrderItem", "PurchaseOrderItem");
+            item.put("DocumentCurrency", input.path("documentCurrency").asText());
+            item.set("SupplierInvoiceItemAmount", source.path("amount"));
+            item.set("QuantityInPurchaseOrderUnit", source.path("quantity"));
+            copyText(source, item, "unit", "PurchaseOrderQuantityUnit");
+            copyText(source, item, "taxCode", "TaxCode");
+            copyText(source, item, "sourceMaterialDocument", "ReferenceDocument");
+            copyText(source, item, "sourceMaterialDocumentYear", "ReferenceDocumentFiscalYear");
+            copyText(source, item, "sourceMaterialDocumentItem", "ReferenceDocumentItem");
+            items.add(item);
+        }
+        itemContainer.set("results", items);
+        payload.set("to_SuplrInvcItemPurOrdRef", itemContainer);
+        return payload;
+    }
     private void copyText(JsonNode source, ObjectNode target, String sourceField, String targetField) {
         String value = source.path(sourceField).asText();
         if (!value.isBlank()) target.put(targetField, value);
     }
+    private String odataDateTime(String value) { return value.matches("^\\d{4}-\\d{2}-\\d{2}$") ? value + "T00:00:00" : value; }
 
     private HttpRequest.Builder baseRequest(URI uri) {
         String authorization = "bearer".equals(properties.getSap().getAuthMode())
