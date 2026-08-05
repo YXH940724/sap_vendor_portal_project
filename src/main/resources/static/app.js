@@ -4,20 +4,20 @@ const resources = {
   materialDocuments: { title: '收货凭证', description: '按采购订单范围查询收货数量与过账信息' }, invoices: { title: '结算对账', description: '按采购订单范围查询发票与对账基础数据' }, suppliers: { title: '供应商资料', description: '当前登录供应商的 SAP 主数据' }
 };
 const columns = {
-  purchaseOrders: ['PurchaseOrder', 'PurchaseOrderItem', 'Material', 'MaterialDescription', 'OrderQuantity', 'PurchaseOrderQuantityUnit', 'DeliveryDate', 'PurchaseOrderStatus'],
+  purchaseOrders: ['PurchaseOrderWithItem', 'MaterialWithDescription', 'Plant', 'OrderQuantity', 'ReceivedQuantity', 'OpenReceiptQuantity', 'PurchaseOrderQuantityUnit', 'DeliveryDate', 'PurchaseOrderStatus'],
   asns: ['InbDelivery', 'PurchaseOrder', 'PurchaseOrderItem', 'Material', 'MaterialDescription', 'DeliveryDate', 'OverallStatus'],
   materialDocuments: ['MaterialDocumentWithYear', 'PurchaseOrderWithItem', 'InbDelivery', 'MaterialWithDescription', 'PostingDate', 'GoodsMovementType', 'ReceiptStatus', 'QuantityInEntryUnit', 'EntryUnit'],
   invoices: ['SupplierInvoice', 'PurchaseOrder', 'DocumentDate', 'InvoiceGrossAmount', 'DocumentCurrency', 'SupplierInvoiceStatus']
 };
 const labels = {
-  PurchaseOrder: '采购订单号', PurchaseOrderItem: '行项目', PurchaseOrderWithItem: '采购订单 / 行号', Material: '物料编码', MaterialDescription: '物料描述', MaterialWithDescription: '物料编码 / 描述', DeliveryDate: '交货日期', PurchaseOrderStatus: '订单状态', OrderQuantity: '订单数量', PurchaseOrderQuantityUnit: '单位',
+  PurchaseOrder: '采购订单号', PurchaseOrderItem: '行项目', PurchaseOrderWithItem: '采购订单 / 行号', Material: '物料编码', MaterialDescription: '物料描述', MaterialWithDescription: '物料编码 / 描述', DeliveryDate: '交货日期', PurchaseOrderStatus: '订单状态', OrderQuantity: '订单数量', ReceivedQuantity: '已收货数量', OpenReceiptQuantity: '未收货数量', PurchaseOrderQuantityUnit: '单位',
   InbDelivery: 'SAP 内向交货单号', DeliveryDocument: '交货单号', DeliveryDocumentItem: '交货项目', PlannedDeliveryDate: '计划到货日期', ActualDeliveryDate: '实际到货日期', OverallStatus: '状态', LastChangeDate: '最后变更日期', DeliveryDocumentBySupplier: '供应商送货单号', TransportReference: '运输单号', ActualDeliveryQuantity: '实际发运数量', DeliveryQuantityUnit: '发运单位', MaterialDocument: '物料凭证', MaterialDocumentWithYear: '物料凭证 / 年度', MaterialDocumentYear: '凭证年度', MaterialDocumentItem: '项目', PostingDate: '过账日期', GoodsMovementType: '移动类型', ReceiptStatus: '收货状态', QuantityInEntryUnit: '收货数量', EntryUnit: '单位', DocumentDate: '凭证日期', MaterialDocumentHeaderText: '凭证抬头文本', Plant: '工厂', StorageLocation: '库存地点', Batch: '批次', ReferenceDocument: '参考凭证', ReferenceDocumentItem: '参考项目',
   SupplierInvoice: '发票号码', SupplierInvoiceStatus: '发票状态', DocumentDate: '凭证日期', InvoiceGrossAmount: '发票金额', DocumentCurrency: '币种', Supplier: '供应商编码', SupplierName: '供应商名称', BusinessPartner: '供应商编码',
   CompanyCode: '公司代码', PurchasingOrganization: '采购组织', PaymentTerms: '付款条款', Country: '国家/地区', CityName: '城市', StreetName: '地址', TaxNumber1: '税号', TransportReference: '运输单号', PurchaseOrderDate: '订单日期',
   SupplierInvoiceID: '供应商发票号', FiscalYear: '会计年度', PaymentBlockingReason: '付款冻结原因', InvoiceStatus: '处理状态', BusinessPlace: '业务地点', EmailAddress: '邮箱', PhoneNumber: '联系电话', NetPriceAmount: '净价', NetPriceQuantity: '价格单位数量', TaxCode: '税码', PurchasingDocumentDeletionCode: '删除标识'
 };
 const detailFields = {
-  purchaseOrders: [['订单与组织', ['PurchaseOrder', 'PurchaseOrderItem', 'PurchaseOrderStatus', 'Supplier', 'CompanyCode', 'PurchasingOrganization', 'PurchaseOrderDate']], ['物料与交付', ['Material', 'MaterialDescription', 'Plant', 'StorageLocation', 'OrderQuantity', 'PurchaseOrderQuantityUnit', 'DeliveryDate']], ['价格与控制', ['NetPriceAmount', 'NetPriceQuantity', 'DocumentCurrency', 'TaxCode', 'PurchasingDocumentDeletionCode']]],
+  purchaseOrders: [['订单与组织', ['PurchaseOrder', 'PurchaseOrderItem', 'PurchaseOrderStatus', 'Supplier', 'CompanyCode', 'PurchasingOrganization', 'PurchaseOrderDate']], ['物料与交付', ['Material', 'MaterialDescription', 'Plant', 'StorageLocation', 'OrderQuantity', 'ReceivedQuantity', 'OpenReceiptQuantity', 'PurchaseOrderQuantityUnit', 'DeliveryDate']], ['价格与控制', ['NetPriceAmount', 'NetPriceQuantity', 'DocumentCurrency', 'TaxCode', 'PurchasingDocumentDeletionCode']]],
   asns: [['发运通知', ['InbDelivery', 'DeliveryDocument', 'DeliveryDocumentItem', 'OverallStatus', 'DeliveryDocumentBySupplier', 'TransportReference', 'LastChangeDate']], ['订单与到货', ['PurchaseOrder', 'PurchaseOrderItem', 'DeliveryDate', 'PlannedDeliveryDate', 'ActualDeliveryDate']], ['物料与数量', ['Material', 'MaterialDescription', 'ActualDeliveryQuantity', 'DeliveryQuantityUnit', 'Plant', 'StorageLocation']]],
   materialDocuments: [['收货凭证', ['MaterialDocument', 'MaterialDocumentYear', 'MaterialDocumentItem', 'ReceiptStatus', 'GoodsMovementType', 'PostingDate', 'DocumentDate', 'MaterialDocumentHeaderText']], ['采购订单与交货引用', ['PurchaseOrder', 'PurchaseOrderItem', 'InbDelivery', 'ReferenceDocument', 'ReferenceDocumentItem', 'CompanyCode']], ['物料与库存', ['Material', 'MaterialDescription', 'QuantityInEntryUnit', 'EntryUnit', 'Plant', 'StorageLocation', 'Batch']]],
   invoices: [['发票抬头', ['SupplierInvoice', 'PurchaseOrder', 'DocumentDate', 'SupplierInvoiceStatus']], ['结算金额', ['InvoiceGrossAmount', 'DocumentCurrency', 'PaymentBlockingReason']]]
@@ -26,7 +26,7 @@ const profileGroups = [['基本资料', ['Supplier', 'SupplierName', 'BusinessPa
 const statusOptions = {
   purchaseOrders: ['待确认', '已确认', '待交货', '部分收货', '部分完成', '已完成', '已取消'],
   asns: ['未处理', '部分处理', '已完成', '已取消'],
-  materialDocuments: ['已收货', '收货冲销', '部分冲销', '部分冲销冲销', '退货', '退货冲销']
+  materialDocuments: ['收货', '收货冲销', '部分退回', '部分退回冲销', '退货', '退货冲销']
 };
 let currentRoute = 'dashboard'; let records = []; let vendorId = '—'; let currentPage = 1; const pageSize = 10; const selectedOrderLines = new Map(); const selectedReceiptLines = new Map();
 const $ = (selector) => document.querySelector(selector); const page = $('#pageContainer');
@@ -170,7 +170,7 @@ function compoundCell(primary, secondary) { return `<b>${escape(value(primary))}
 function fieldValue(key, raw) { if (!present(raw)) return '—'; if (/Date/.test(key)) return escape(formatDate(raw)); if (/status/i.test(key)) return escape(displayStatus(raw)); return escape(value(raw)); }
 function formatDate(raw) { const text = String(raw); const sapV2 = text.match(/^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/); if (sapV2) { const date = new Date(Number(sapV2[1])); return Number.isNaN(date.getTime()) ? text : date.toISOString().slice(0, 10); } return text.slice(0, 10); }
 function documentStatus(route, row) { if (route === 'purchaseOrders') return displayStatus(row.PurchaseOrderStatus); if (route === 'asns') return displayStatus(row.OverallStatus); if (route === 'materialDocuments') return displayStatus(row.ReceiptStatus); return ''; }
-function displayStatus(raw) { const text = value(raw); const status = { '01': '待确认', '1': '待确认', '02': '已确认', '2': '已确认', '03': '部分完成', '3': '部分完成', '04': '已完成', '4': '已完成', A: '未处理', B: '部分处理', C: '已完成', X: '已取消', COMPLETED: '已完成', CANCELLED: '已取消' }; return status[text.toUpperCase()] || text; }
+function displayStatus(raw) { const text = value(raw); const status = { '01': '待确认', '1': '待确认', '02': '已确认', '2': '已确认', '03': '部分完成', '3': '部分完成', '04': '已完成', '4': '已完成', A: '未处理', B: '部分处理', C: '已完成', X: '已取消', COMPLETED: '已完成', CANCELLED: '已取消', '已收货': '收货', '部分冲销': '部分退回', '部分冲销冲销': '部分退回冲销' }; return status[text.toUpperCase()] || text; }
 function tone(status) { return /逾期|异常|取消/.test(status) ? 'danger' : /待/.test(status) ? 'warning' : /完成|确认|收货|对账/.test(status) ? 'success' : 'info'; }
 function present(value) { return value !== null && value !== undefined && value !== ''; } function value(value) { return !present(value) ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); } function escape(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); } function escapeAttr(value) { return escape(value === '—' ? '' : value); }
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || `请求失败（${response.status}）`); return payload; }

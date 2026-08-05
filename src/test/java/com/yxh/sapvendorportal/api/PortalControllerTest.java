@@ -53,6 +53,40 @@ class PortalControllerTest {
     }
 
     @Test
+    void aggregatesGoodsReceiptQuantityIntoPurchaseOrderProgress() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\"}"));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"Plant\":\"1710\",\"OrderQuantity\":20,\"PurchaseOrderQuantityUnit\":\"EA\",\"PurchaseOrderStatus\":\"02\"}"));
+            return List.of(
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000002\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"123\",\"QuantityInEntryUnit\":2}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000003\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"102\",\"QuantityInEntryUnit\":3}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000004\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"122\",\"QuantityInEntryUnit\":1}"));
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        Map<String, Object> response = controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class));
+        @SuppressWarnings("unchecked")
+        List<JsonNode> records = (List<JsonNode>) response.get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("Plant").asText()).isEqualTo("1710");
+            assertThat(row.path("ReceivedQuantity").asText()).isEqualTo("8");
+            assertThat(row.path("OpenReceiptQuantity").asText()).isEqualTo("12");
+            assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("部分收货");
+        });
+    }
+
+    @Test
     void calculatesRemainingSettlementQuantityFromReceiptAndInvoiceLines() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);

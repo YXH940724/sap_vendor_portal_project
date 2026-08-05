@@ -149,7 +149,7 @@ public class PortalController {
         Map<String, JsonNode> headerByOrder = new LinkedHashMap<>();
         headers.forEach(header -> headerByOrder.put(header.path("PurchaseOrder").asText(), header));
         List<JsonNode> orderLines = items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
-        return enrichWithInboundDeliveries(orderLines, vendorId, top);
+        return enrichWithReceiptProgress(enrichWithInboundDeliveries(orderLines, vendorId, top), ids, top);
     }
     private PortalProperties.Service purchaseOrderItemService() {
         PortalProperties.Service itemService = new PortalProperties.Service();
@@ -199,6 +199,42 @@ public class PortalController {
             ObjectNode result = ((ObjectNode) line).deepCopy();
             String delivery = deliveryByOrderLine.get(purchaseOrderLineKey(line));
             if (delivery != null && (result.path("InbDelivery").asText().isBlank())) result.put("InbDelivery", delivery);
+            return result;
+        }).toList();
+    }
+    private List<JsonNode> enrichWithReceiptProgress(List<JsonNode> orderLines, List<String> purchaseOrders, int top) {
+        if (orderLines.isEmpty() || purchaseOrders.isEmpty()) return orderLines;
+        List<JsonNode> receiptMovements;
+        try {
+            PortalProperties.Service materialDocumentService = service("materialDocument");
+            receiptMovements = recordMapper.map("materialDocuments", sapClient.getByReferences(materialDocumentService, purchaseOrders, materialDocumentService.getReferenceField(), "MaterialDocument desc", top));
+        } catch (ResponseStatusException ignored) { return orderLines; }
+        Map<String, BigDecimal> receivedByOrderLine = new LinkedHashMap<>();
+        for (JsonNode receipt : receiptMovements) {
+            if (!isGoodsReceiptMovement(receipt)) continue;
+            BigDecimal quantity = firstDecimal(receipt, "QuantityInEntryUnit", "Quantity", "EntryQuantity");
+            if (quantity == null) continue;
+            BigDecimal sign = switch (firstText(receipt, "GoodsMovementType")) {
+                case "101", "123" -> BigDecimal.ONE;
+                case "102", "122" -> BigDecimal.ONE.negate();
+                default -> BigDecimal.ZERO;
+            };
+            if (sign.signum() != 0) receivedByOrderLine.merge(purchaseOrderLineKey(receipt), quantity.multiply(sign), BigDecimal::add);
+        }
+        return orderLines.stream().map(line -> {
+            if (!line.isObject()) return line;
+            ObjectNode result = ((ObjectNode) line).deepCopy();
+            BigDecimal received = receivedByOrderLine.getOrDefault(purchaseOrderLineKey(line), BigDecimal.ZERO).max(BigDecimal.ZERO);
+            BigDecimal ordered = firstDecimal(line, "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
+            result.put("ReceivedQuantity", decimal(received));
+            if (ordered != null) {
+                BigDecimal open = ordered.subtract(received).max(BigDecimal.ZERO);
+                result.put("OpenReceiptQuantity", decimal(open));
+                if (result.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
+                    if (received.signum() > 0 && received.compareTo(ordered) >= 0) result.put("PurchaseOrderStatus", "已完成");
+                    else if (received.signum() > 0) result.put("PurchaseOrderStatus", "部分收货");
+                }
+            }
             return result;
         }).toList();
     }
