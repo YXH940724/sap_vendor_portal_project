@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -81,7 +82,7 @@ public class PortalController {
     @GetMapping("/reconciliation") public Map<String, Object> reconciliation(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
-        List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream().map(ReconciliationLine::view).toList();
+        List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream().filter(ReconciliationLine::isSettlementCandidate).map(ReconciliationLine::view).toList();
         return Map.of("vendorId", scope.vendorId(), "records", records, "count", records.size(), "retrievedAt", Instant.now().toString());
     }
     @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) {
@@ -145,7 +146,8 @@ public class PortalController {
         List<JsonNode> items = recordMapper.map("purchaseOrders", sapClient.getByReferences(purchaseOrderItemService(), ids, "PurchaseOrder", "PurchaseOrder asc", top));
         Map<String, JsonNode> headerByOrder = new LinkedHashMap<>();
         headers.forEach(header -> headerByOrder.put(header.path("PurchaseOrder").asText(), header));
-        return items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
+        List<JsonNode> orderLines = items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
+        return enrichWithInboundDeliveries(orderLines, vendorId, top);
     }
     private PortalProperties.Service purchaseOrderItemService() {
         PortalProperties.Service itemService = new PortalProperties.Service();
@@ -173,11 +175,30 @@ public class PortalController {
     private JsonNode enrichWithPurchaseOrderItem(JsonNode record, JsonNode orderLine) {
         if (orderLine == null || !record.isObject()) return record;
         ObjectNode result = ((ObjectNode) record).deepCopy();
-        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode")) {
+        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery")) {
             JsonNode source = orderLine.path(field);
             if ((!result.has(field) || result.path(field).asText().isBlank()) && !source.isMissingNode() && !source.isNull() && !source.asText().isBlank()) result.set(field, source);
         }
         return result;
+    }
+    private List<JsonNode> enrichWithInboundDeliveries(List<JsonNode> orderLines, String vendorId, int top) {
+        if (orderLines.isEmpty()) return orderLines;
+        List<JsonNode> asns;
+        try { asns = recordMapper.map("asns", sapClient.get(service("asn"), vendorId, "", "InbDelivery", "LastChangeDate desc", top)); }
+        catch (ResponseStatusException ignored) { return orderLines; }
+        Map<String, String> deliveryByOrderLine = new LinkedHashMap<>();
+        for (JsonNode asn : asns) {
+            String key = purchaseOrderLineKey(asn);
+            String delivery = firstText(asn, "InbDelivery", "DeliveryDocument");
+            if (!":".equals(key) && !delivery.isBlank()) deliveryByOrderLine.putIfAbsent(key, delivery);
+        }
+        return orderLines.stream().map(line -> {
+            if (!line.isObject()) return line;
+            ObjectNode result = ((ObjectNode) line).deepCopy();
+            String delivery = deliveryByOrderLine.get(purchaseOrderLineKey(line));
+            if (delivery != null && (result.path("InbDelivery").asText().isBlank())) result.put("InbDelivery", delivery);
+            return result;
+        }).toList();
     }
     private List<ReconciliationLine> reconciliationLines(String vendorId, int top) {
         List<JsonNode> receipts = load("materialDocuments", vendorId, "", top, List.of());
@@ -300,15 +321,18 @@ public class PortalController {
         if (invoiceReference.isBlank() || documentDate.isBlank() || postingDate.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写供应商发票号、凭证日期和过账日期。");
         Map<String, ReconciliationLine> available = new LinkedHashMap<>();
         reconciliationLines(vendorId, 100).forEach(line -> available.put(line.receiptKey(), line));
+        BigDecimal grossAmount = firstDecimal(input, "grossAmount");
+        BigDecimal taxAmount = firstDecimal(input, "taxAmount");
+        String headerText = input.path("headerText").asText().trim();
+        if (grossAmount == null || grossAmount.signum() <= 0 || taxAmount == null || taxAmount.signum() < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写大于零的本次含税金额，以及不小于零的税额。 ");
         List<InvoiceSelection> selections = new ArrayList<>();
         Map<String, BigDecimal> requestedByReceipt = new LinkedHashMap<>();
         input.path("items").forEach(item -> {
             String receiptKey = item.path("receiptKey").asText().trim();
             BigDecimal quantity = firstDecimal(item, "quantity");
-            BigDecimal amount = firstDecimal(item, "amount");
-            if (receiptKey.isBlank() || quantity == null || quantity.signum() <= 0 || amount == null || amount.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "每个发票行必须包含收货来源、结算数量和含税金额，且均大于零。");
+            if (receiptKey.isBlank() || quantity == null || quantity.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "每个发票行必须包含收货来源和大于零的结算数量。");
             requestedByReceipt.merge(receiptKey, quantity, BigDecimal::add);
-            selections.add(new InvoiceSelection(receiptKey, quantity, amount));
+            selections.add(new InvoiceSelection(receiptKey, quantity));
         });
         if (selections.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请至少选择一条可结算的收货凭证行。");
         for (Map.Entry<String, BigDecimal> entry : requestedByReceipt.entrySet()) {
@@ -322,17 +346,20 @@ public class PortalController {
         ObjectNode result = JsonNodeFactory.instance.objectNode();
         result.put("invoiceReference", invoiceReference); result.put("documentDate", documentDate); result.put("postingDate", postingDate); result.put("companyCode", first.companyCode()); result.put("documentCurrency", first.documentCurrency());
         ArrayNode items = result.putArray("items");
-        BigDecimal grossAmount = BigDecimal.ZERO;
+        BigDecimal netAmount = BigDecimal.ZERO;
         for (InvoiceSelection selection : selections) {
             ReconciliationLine source = available.get(selection.receiptKey());
             if (!first.companyCode().equals(source.companyCode()) || !first.documentCurrency().equals(source.documentCurrency())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "一次发票只能选择相同公司代码和币种的收货凭证行。");
-            if (source.materialDocument().isBlank() || source.materialDocumentYear().isBlank() || source.materialDocumentItem().isBlank() || source.purchaseOrder().isBlank() || source.purchaseOrderItem().isBlank() || source.purchaseOrderUnit().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少凭证、采购订单或单位字段，不能创建收货引用发票。");
+            if (source.materialDocument().isBlank() || source.materialDocumentYear().isBlank() || source.materialDocumentItem().isBlank() || source.purchaseOrder().isBlank() || source.purchaseOrderItem().isBlank() || source.purchaseOrderUnit().isBlank() || source.taxCode().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少凭证、采购订单、单位或税码，不能创建收货引用发票。");
+            BigDecimal lineAmount = source.expectedInvoiceNetAmount(selection.quantity());
             ObjectNode item = items.addObject();
-            item.put("sourceMaterialDocument", source.materialDocument()); item.put("sourceMaterialDocumentYear", source.materialDocumentYear()); item.put("sourceMaterialDocumentItem", source.materialDocumentItem()); item.put("sourcePurchaseOrder", source.purchaseOrder()); item.put("sourcePurchaseOrderItem", source.purchaseOrderItem()); item.put("quantity", selection.quantity()); item.put("amount", selection.amount()); item.put("unit", source.purchaseOrderUnit());
+            item.put("sourceMaterialDocument", source.materialDocument()); item.put("sourceMaterialDocumentYear", source.materialDocumentYear()); item.put("sourceMaterialDocumentItem", source.materialDocumentItem()); item.put("sourcePurchaseOrder", source.purchaseOrder()); item.put("sourcePurchaseOrderItem", source.purchaseOrderItem()); item.put("quantity", selection.quantity()); item.put("amount", lineAmount); item.put("unit", source.purchaseOrderUnit());
             if (!source.taxCode().isBlank()) item.put("taxCode", source.taxCode());
-            grossAmount = grossAmount.add(selection.amount());
+            netAmount = netAmount.add(lineAmount);
         }
-        result.put("grossAmount", grossAmount);
+        BigDecimal expectedGrossAmount = netAmount.add(taxAmount).setScale(2, RoundingMode.HALF_UP);
+        if (grossAmount.setScale(2, RoundingMode.HALF_UP).compareTo(expectedGrossAmount) != 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "本次含税金额必须等于 SAP 行项目不含税金额合计加税额。预计含税金额为 " + expectedGrossAmount.toPlainString() + "。");
+        result.put("netAmount", netAmount.setScale(2, RoundingMode.HALF_UP)); result.put("taxAmount", taxAmount.setScale(2, RoundingMode.HALF_UP)); result.put("grossAmount", expectedGrossAmount); if (!headerText.isBlank()) result.put("headerText", headerText);
         return result;
     }
     private String decimal(BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
@@ -372,6 +399,11 @@ public class PortalController {
         ReconciliationLine withSettlementInvoices(String value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, actualReturnQuantity, value, unitConsistent); }
         String purchaseOrderLineKey() { return purchaseOrder + ":" + canonicalItemNumber(purchaseOrderItem); }
         boolean canSettle() { return receivedQuantity.signum() > 0 && unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
+        boolean isSettlementCandidate() { return unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
+        BigDecimal expectedInvoiceNetAmount(BigDecimal quantity) {
+            if (netPriceAmount == null || netPriceQuantity == null || netPriceQuantity.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少 SAP 净价或价格单位，不能校验发票金额。");
+            return quantity.multiply(netPriceAmount).divide(netPriceQuantity, 2, RoundingMode.HALF_UP);
+        }
         BigDecimal remainingQuantity() { return canSettle() ? receivedQuantity.subtract(settledQuantity).max(BigDecimal.ZERO) : BigDecimal.ZERO; }
         String settlementStatus() { if (RETURN_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货"; if (RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货冲销"; if ("102".equals(goodsMovementType)) return "收货冲销"; if ("122".equals(goodsMovementType)) return "部分冲销"; if ("123".equals(goodsMovementType)) return "部分冲销冲销"; if (!unitConsistent) return "单位不一致"; return remainingQuantity().signum() > 0 ? "可结算" : "已结算"; }
         Map<String, Object> view() {
@@ -380,7 +412,7 @@ public class PortalController {
         }
         private String decimal(BigDecimal value) { return value == null ? "" : value.stripTrailingZeros().toPlainString(); }
     }
-    private record InvoiceSelection(String receiptKey, BigDecimal quantity, BigDecimal amount) { }
+    private record InvoiceSelection(String receiptKey, BigDecimal quantity) { }
     private record Resource(String serviceName, String searchField, String orderBy) { }
     private record LoadResult(List<JsonNode> records, String issue) { }
 }

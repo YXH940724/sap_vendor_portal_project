@@ -46,7 +46,10 @@ class PortalControllerTest {
         @SuppressWarnings("unchecked")
         List<JsonNode> records = (List<JsonNode>) response.get("records");
 
-        assertThat(records).singleElement().extracting(row -> row.path("MaterialDescription").asText()).isEqualTo("精密轴承");
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("MaterialDescription").asText()).isEqualTo("精密轴承");
+            assertThat(row.path("ReceiptStatus").asText()).isEqualTo("已收货");
+        });
     }
 
     @Test
@@ -99,14 +102,33 @@ class PortalControllerTest {
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
-                {"invoiceReference":"SUP-INV-001","documentDate":"2026-08-03","postingDate":"2026-08-03","items":[
-                  {"receiptKey":"5000000001:2026:1","quantity":7,"amount":70}
+                {"invoiceReference":"SUP-INV-001","documentDate":"2026-08-03","postingDate":"2026-08-03","grossAmount":77,"taxAmount":7,"items":[
+                  {"receiptKey":"5000000001:2026:1","quantity":7}
                 ]}
                 """);
 
         assertThatThrownBy(() -> controller.createInvoice(input, mock(HttpServletRequest.class)))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getReason()).contains("可结算数量"));
+    }
+
+    @Test
+    void rejectsInvoiceGrossAmountWhenItDoesNotEqualSapLineAmountPlusTax() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = reconciliationClient();
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        JsonNode input = objectMapper.readTree("""
+                {"invoiceReference":"SUP-INV-002","documentDate":"2026-08-03","postingDate":"2026-08-03",
+                 "grossAmount":80,"taxAmount":10,"headerText":"八月收货结算","items":[
+                  {"receiptKey":"5000000001:2026:1","quantity":6}
+                ]}
+                """);
+
+        assertThatThrownBy(() -> controller.createInvoice(input, mock(HttpServletRequest.class)))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getReason()).contains("含税金额"));
     }
 
     @Test
@@ -121,19 +143,11 @@ class PortalControllerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) response.get("records");
 
-        assertThat(records).filteredOn(row -> "5000000001".equals(row.get("materialDocument"))).singleElement().satisfies(row -> {
+        assertThat(records).singleElement().satisfies(row -> {
             assertThat(row.get("materialDocumentYear")).isEqualTo("2026");
             assertThat(row.get("receivedQuantity")).isEqualTo("6");
             assertThat(row.get("remainingQuantity")).isEqualTo("2");
             assertThat(row.get("settlementInvoices")).isEqualTo("5100000001/2026");
-        });
-        assertThat(records).filteredOn(row -> "161".equals(row.get("goodsMovementType"))).singleElement().satisfies(row -> {
-            assertThat(row.get("settlementStatus")).isEqualTo("退货");
-            assertThat(row.get("actualReturnQuantity")).isEqualTo("2");
-        });
-        assertThat(records).filteredOn(row -> "162".equals(row.get("goodsMovementType"))).singleElement().satisfies(row -> {
-            assertThat(row.get("settlementStatus")).isEqualTo("退货冲销");
-            assertThat(row.get("actualReturnQuantity")).isEqualTo("0");
         });
     }
 
@@ -151,7 +165,7 @@ class PortalControllerTest {
         });
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
-            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"PurchaseOrderQuantityUnit\":\"EA\"}"));
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"PurchaseOrderQuantityUnit\":\"EA\",\"NetPriceAmount\":10,\"NetPriceQuantity\":1,\"TaxCode\":\"V0\"}"));
             JsonNode receipt = objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}");
             if (!includesReturnAndReversal) return List.of(receipt);
             return List.of(receipt,

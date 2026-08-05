@@ -93,6 +93,7 @@ public class SapODataClient {
         payload.put("InvoicingParty", vendorId);
         payload.put("DocumentCurrency", input.path("documentCurrency").asText());
         payload.set("InvoiceGrossAmount", input.path("grossAmount"));
+        copyText(input, payload, "headerText", "DocumentHeaderText");
         payload.put("TaxIsCalculatedAutomatically", true);
         ObjectNode itemContainer = objectMapper.createObjectNode();
         ArrayNode items = objectMapper.createArrayNode();

@@ -94,9 +94,11 @@ public class ODataRecordMapper {
                 alias(row, "MaterialDocument", "MaterialDocument");
                 alias(row, "MaterialDocumentYear", "MaterialDocumentYear", "Year");
                 alias(row, "PurchaseOrder", "PurchaseOrder", "PurchaseOrderNumber");
+                alias(row, "InbDelivery", "InbDelivery", "DeliveryDocument", "InboundDelivery", "ReferenceDocument");
                 alias(row, "MaterialDescription", "MaterialDescription", "MaterialDocumentItemText", "ItemText");
                 alias(row, "QuantityInEntryUnit", "QuantityInEntryUnit", "Quantity", "EntryQuantity");
                 alias(row, "EntryUnit", "EntryUnit", "QuantityUnit", "BaseUnit");
+                deriveReceiptStatus(row);
             }
             case "invoices" -> {
                 alias(row, "SupplierInvoice", "SupplierInvoice", "SupplierInvoiceID", "InvoiceNumber");
@@ -149,6 +151,19 @@ public class ODataRecordMapper {
             return;
         }
         if (row.hasNonNull("IsCompletelyDelivered")) row.put("PurchaseOrderStatus", "待交货");
+    }
+    private void deriveReceiptStatus(ObjectNode row) {
+        String movementType = row.path("GoodsMovementType").asText();
+        String status = switch (movementType) {
+            case "101" -> "已收货";
+            case "102" -> "收货冲销";
+            case "122" -> "部分冲销";
+            case "123" -> "部分冲销冲销";
+            case "161" -> "退货";
+            case "162" -> "退货冲销";
+            default -> "其他移动";
+        };
+        row.put("ReceiptStatus", status);
     }
     private BigDecimal firstDecimal(ObjectNode row, String... names) {
         for (String name : names) {
