@@ -136,7 +136,7 @@ class PortalControllerTest {
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
-                {"invoiceReference":"SUP-INV-001","documentDate":"2026-08-03","postingDate":"2026-08-03","grossAmount":77,"taxAmount":7,"items":[
+                {"invoiceReference":"SUP-INV-001","documentDate":"2026-08-03","postingDate":"2026-08-03","netAmount":70,"grossAmount":77,"taxAmount":7,"items":[
                   {"receiptKey":"5000000001:2026:1","quantity":7}
                 ]}
                 """);
@@ -155,7 +155,7 @@ class PortalControllerTest {
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
                 {"invoiceReference":"SUP-INV-002","documentDate":"2026-08-03","postingDate":"2026-08-03",
-                 "grossAmount":80,"taxAmount":10,"headerText":"八月收货结算","items":[
+                 "netAmount":60,"grossAmount":80,"taxAmount":10,"headerText":"八月收货结算","items":[
                   {"receiptKey":"5000000001:2026:1","quantity":6}
                 ]}
                 """);

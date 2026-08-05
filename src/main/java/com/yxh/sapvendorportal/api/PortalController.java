@@ -189,16 +189,22 @@ public class PortalController {
         try { asns = recordMapper.map("asns", sapClient.get(service("asn"), vendorId, "", "InbDelivery", "LastChangeDate desc", top)); }
         catch (ResponseStatusException ignored) { return orderLines; }
         Map<String, String> deliveryByOrderLine = new LinkedHashMap<>();
+        Map<String, BigDecimal> asnQuantityByOrderLine = new LinkedHashMap<>();
         for (JsonNode asn : asns) {
             String key = purchaseOrderLineKey(asn);
             String delivery = firstText(asn, "InbDelivery", "DeliveryDocument");
             if (!":".equals(key) && !delivery.isBlank()) deliveryByOrderLine.putIfAbsent(key, delivery);
+            BigDecimal quantity = firstDecimal(asn, "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
+            if (!":".equals(key) && quantity != null) asnQuantityByOrderLine.merge(key, quantity, BigDecimal::add);
         }
         return orderLines.stream().map(line -> {
             if (!line.isObject()) return line;
             ObjectNode result = ((ObjectNode) line).deepCopy();
             String delivery = deliveryByOrderLine.get(purchaseOrderLineKey(line));
             if (delivery != null && (result.path("InbDelivery").asText().isBlank())) result.put("InbDelivery", delivery);
+            String key = purchaseOrderLineKey(line);
+            result.put("HasAsn", deliveryByOrderLine.containsKey(key));
+            result.put("CreatedAsnQuantity", decimal(asnQuantityByOrderLine.getOrDefault(key, BigDecimal.ZERO)));
             return result;
         }).toList();
     }
@@ -210,16 +216,18 @@ public class PortalController {
             receiptMovements = recordMapper.map("materialDocuments", sapClient.getByReferences(materialDocumentService, purchaseOrders, materialDocumentService.getReferenceField(), "MaterialDocument desc", top));
         } catch (ResponseStatusException ignored) { return orderLines; }
         Map<String, BigDecimal> receivedByOrderLine = new LinkedHashMap<>();
+        Map<String, Boolean> returnOrderByOrderLine = new LinkedHashMap<>();
+        orderLines.forEach(line -> returnOrderByOrderLine.put(purchaseOrderLineKey(line), isReturnPurchaseOrder(line)));
         for (JsonNode receipt : receiptMovements) {
             if (!isGoodsReceiptMovement(receipt)) continue;
             BigDecimal quantity = firstDecimal(receipt, "QuantityInEntryUnit", "Quantity", "EntryQuantity");
             if (quantity == null) continue;
-            BigDecimal sign = switch (firstText(receipt, "GoodsMovementType")) {
-                case "101", "123" -> BigDecimal.ONE;
-                case "102", "122" -> BigDecimal.ONE.negate();
-                default -> BigDecimal.ZERO;
-            };
-            if (sign.signum() != 0) receivedByOrderLine.merge(purchaseOrderLineKey(receipt), quantity.multiply(sign), BigDecimal::add);
+            String key = purchaseOrderLineKey(receipt);
+            String movementType = firstText(receipt, "GoodsMovementType");
+            BigDecimal sign = Boolean.TRUE.equals(returnOrderByOrderLine.get(key))
+                    ? switch (movementType) { case "161" -> BigDecimal.ONE; case "162" -> BigDecimal.ONE.negate(); default -> BigDecimal.ZERO; }
+                    : switch (movementType) { case "101", "123" -> BigDecimal.ONE; case "102", "122" -> BigDecimal.ONE.negate(); default -> BigDecimal.ZERO; };
+            if (sign.signum() != 0) receivedByOrderLine.merge(key, quantity.multiply(sign), BigDecimal::add);
         }
         return orderLines.stream().map(line -> {
             if (!line.isObject()) return line;
@@ -230,6 +238,11 @@ public class PortalController {
             if (ordered != null) {
                 BigDecimal open = ordered.subtract(received).max(BigDecimal.ZERO);
                 result.put("OpenReceiptQuantity", decimal(open));
+                BigDecimal createdAsnQuantity = firstDecimal(result, "CreatedAsnQuantity");
+                BigDecimal asnAvailableQuantity = result.path("HasAsn").asBoolean(false)
+                        ? ordered.subtract(createdAsnQuantity == null ? BigDecimal.ZERO : createdAsnQuantity).max(BigDecimal.ZERO)
+                        : open;
+                result.put("AsnAvailableQuantity", decimal(asnAvailableQuantity));
                 if (result.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
                     if (received.signum() > 0 && received.compareTo(ordered) >= 0) result.put("PurchaseOrderStatus", "已完成");
                     else if (received.signum() > 0) result.put("PurchaseOrderStatus", "部分收货");
@@ -360,9 +373,10 @@ public class PortalController {
         Map<String, ReconciliationLine> available = new LinkedHashMap<>();
         reconciliationLines(vendorId, 100).forEach(line -> available.put(line.receiptKey(), line));
         BigDecimal grossAmount = firstDecimal(input, "grossAmount");
+        BigDecimal netAmount = firstDecimal(input, "netAmount");
         BigDecimal taxAmount = firstDecimal(input, "taxAmount");
         String headerText = input.path("headerText").asText().trim();
-        if (grossAmount == null || grossAmount.signum() <= 0 || taxAmount == null || taxAmount.signum() < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写大于零的本次含税金额，以及不小于零的税额。 ");
+        if (grossAmount == null || grossAmount.signum() <= 0 || netAmount == null || netAmount.signum() < 0 || taxAmount == null || taxAmount.signum() < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写不小于零的本次不含税金额、税额，以及大于零的本次含税金额。 ");
         List<InvoiceSelection> selections = new ArrayList<>();
         Map<String, BigDecimal> requestedByReceipt = new LinkedHashMap<>();
         input.path("items").forEach(item -> {
@@ -384,20 +398,39 @@ public class PortalController {
         ObjectNode result = JsonNodeFactory.instance.objectNode();
         result.put("invoiceReference", invoiceReference); result.put("documentDate", documentDate); result.put("postingDate", postingDate); result.put("companyCode", first.companyCode()); result.put("documentCurrency", first.documentCurrency());
         ArrayNode items = result.putArray("items");
-        BigDecimal netAmount = BigDecimal.ZERO;
+        List<BigDecimal> sapNetAmounts = new ArrayList<>();
         for (InvoiceSelection selection : selections) {
             ReconciliationLine source = available.get(selection.receiptKey());
             if (!first.companyCode().equals(source.companyCode()) || !first.documentCurrency().equals(source.documentCurrency())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "一次发票只能选择相同公司代码和币种的收货凭证行。");
             if (source.materialDocument().isBlank() || source.materialDocumentYear().isBlank() || source.materialDocumentItem().isBlank() || source.purchaseOrder().isBlank() || source.purchaseOrderItem().isBlank() || source.purchaseOrderUnit().isBlank() || source.taxCode().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少凭证、采购订单、单位或税码，不能创建收货引用发票。");
-            BigDecimal lineAmount = source.expectedInvoiceNetAmount(selection.quantity());
+            sapNetAmounts.add(source.expectedInvoiceNetAmount(selection.quantity()));
+        }
+        BigDecimal sapNetAmount = sapNetAmounts.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+        List<BigDecimal> adjustedNetAmounts = allocateAdjustedNetAmounts(sapNetAmounts, netAmount.setScale(2, RoundingMode.HALF_UP), sapNetAmount);
+        BigDecimal expectedGrossAmount = netAmount.add(taxAmount).setScale(2, RoundingMode.HALF_UP);
+        if (grossAmount.setScale(2, RoundingMode.HALF_UP).compareTo(expectedGrossAmount) != 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "本次含税金额必须等于本次不含税金额加税额。预计含税金额为 " + expectedGrossAmount.toPlainString() + "。");
+        for (int index = 0; index < selections.size(); index++) {
+            InvoiceSelection selection = selections.get(index);
+            ReconciliationLine source = available.get(selection.receiptKey());
+            BigDecimal lineAmount = adjustedNetAmounts.get(index);
             ObjectNode item = items.addObject();
             item.put("sourceMaterialDocument", source.materialDocument()); item.put("sourceMaterialDocumentYear", source.materialDocumentYear()); item.put("sourceMaterialDocumentItem", source.materialDocumentItem()); item.put("sourcePurchaseOrder", source.purchaseOrder()); item.put("sourcePurchaseOrderItem", source.purchaseOrderItem()); item.put("quantity", selection.quantity()); item.put("amount", lineAmount); item.put("unit", source.purchaseOrderUnit());
             if (!source.taxCode().isBlank()) item.put("taxCode", source.taxCode());
-            netAmount = netAmount.add(lineAmount);
         }
-        BigDecimal expectedGrossAmount = netAmount.add(taxAmount).setScale(2, RoundingMode.HALF_UP);
-        if (grossAmount.setScale(2, RoundingMode.HALF_UP).compareTo(expectedGrossAmount) != 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "本次含税金额必须等于 SAP 行项目不含税金额合计加税额。预计含税金额为 " + expectedGrossAmount.toPlainString() + "。");
-        result.put("netAmount", netAmount.setScale(2, RoundingMode.HALF_UP)); result.put("taxAmount", taxAmount.setScale(2, RoundingMode.HALF_UP)); result.put("grossAmount", expectedGrossAmount); if (!headerText.isBlank()) result.put("headerText", headerText);
+        result.put("sapNetAmount", sapNetAmount); result.put("netAmount", netAmount.setScale(2, RoundingMode.HALF_UP)); result.put("taxAmount", taxAmount.setScale(2, RoundingMode.HALF_UP)); result.put("grossAmount", expectedGrossAmount); if (!headerText.isBlank()) result.put("headerText", headerText);
+        return result;
+    }
+    private List<BigDecimal> allocateAdjustedNetAmounts(List<BigDecimal> sapAmounts, BigDecimal targetNetAmount, BigDecimal sapNetAmount) {
+        if (sapAmounts.isEmpty()) return List.of();
+        if (targetNetAmount.compareTo(sapNetAmount) == 0) return sapAmounts.stream().map(amount -> amount.setScale(2, RoundingMode.HALF_UP)).toList();
+        if (sapNetAmount.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SAP 不含税金额合计为零，不能按金额占比调整。 ");
+        List<BigDecimal> result = new ArrayList<>();
+        BigDecimal remaining = targetNetAmount;
+        for (int index = 0; index < sapAmounts.size(); index++) {
+            BigDecimal adjusted = index == sapAmounts.size() - 1 ? remaining : sapAmounts.get(index).multiply(targetNetAmount).divide(sapNetAmount, 2, RoundingMode.HALF_UP);
+            result.add(adjusted);
+            remaining = remaining.subtract(adjusted);
+        }
         return result;
     }
     private String decimal(BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
@@ -407,6 +440,13 @@ public class PortalController {
         return item.replaceFirst("^0+(?!$)", "");
     }
     private boolean isGoodsReceiptMovement(JsonNode record) { return GOODS_RECEIPT_MOVEMENT_TYPES.contains(record.path("GoodsMovementType").asText()); }
+    private boolean isReturnPurchaseOrder(JsonNode line) {
+        for (String field : List.of("ReturnsItem", "IsReturnsItem", "ReturnsIndicator")) {
+            JsonNode value = line.path(field);
+            if (value.asBoolean(false) || "X".equalsIgnoreCase(value.asText()) || "true".equalsIgnoreCase(value.asText())) return true;
+        }
+        return false;
+    }
     private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }
         catch (ResponseStatusException exception) { return new LoadResult(List.of(), exception.getReason() == null ? "SAP 数据读取失败。" : exception.getReason()); }
@@ -423,11 +463,28 @@ public class PortalController {
     }
     private void validateAsnSources(JsonNode input, String vendorId) {
         LinkedHashSet<String> requested = new LinkedHashSet<>();
+        Map<String, BigDecimal> requestedByOrderLine = new LinkedHashMap<>();
         input.path("sourcePurchaseOrders").forEach(value -> { if (!value.asText().isBlank()) requested.add(value.asText()); });
-        input.path("items").forEach(item -> { String purchaseOrder = item.path("sourcePurchaseOrder").asText(); if (!purchaseOrder.isBlank()) requested.add(purchaseOrder); });
+        input.path("items").forEach(item -> {
+            String purchaseOrder = item.path("sourcePurchaseOrder").asText();
+            String purchaseOrderItem = item.path("sourcePurchaseOrderItem").asText();
+            if (!purchaseOrder.isBlank()) requested.add(purchaseOrder);
+            BigDecimal quantity = firstDecimal(item, "quantity");
+            if (purchaseOrder.isBlank() || purchaseOrderItem.isBlank() || quantity == null || quantity.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "每个 ASN 行必须包含订单、行号和大于零的发运数量。");
+            requestedByOrderLine.merge(purchaseOrder + ":" + canonicalItemNumber(purchaseOrderItem), quantity, BigDecimal::add);
+        });
         if (requested.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请至少选择一个采购订单行后再创建 ASN。");
-        List<String> allowed = purchaseOrderIds(loadPurchaseOrders(vendorId, 100));
+        List<JsonNode> orderLines = loadPurchaseOrders(vendorId, 100);
+        List<String> allowed = purchaseOrderIds(orderLines);
         if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
+        Map<String, JsonNode> orderLineByKey = new LinkedHashMap<>();
+        orderLines.forEach(line -> orderLineByKey.put(purchaseOrderLineKey(line), line));
+        for (Map.Entry<String, BigDecimal> entry : requestedByOrderLine.entrySet()) {
+            JsonNode source = orderLineByKey.get(entry.getKey());
+            if (source == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单行不属于当前供应商，已拒绝创建 ASN。");
+            BigDecimal available = firstDecimal(source, "AsnAvailableQuantity");
+            if (available == null || entry.getValue().compareTo(available) > 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "订单行 " + entry.getKey() + " 的本次发运数量超过实时可发运数量 " + decimal(available == null ? BigDecimal.ZERO : available) + "。");
+        }
     }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent) {
