@@ -26,7 +26,10 @@ import java.util.Set;
 @RequestMapping("/api")
 public class PortalController {
     private static final Set<String> GOODS_RECEIPT_MOVEMENT_TYPES = Set.of("101", "102", "122", "123", "161", "162");
-    private static final Set<String> RETURN_MOVEMENT_TYPES = Set.of("102", "122", "161");
+    private static final Set<String> SETTLEMENT_RECEIPT_MOVEMENT_TYPES = Set.of("101");
+    private static final Set<String> SETTLEMENT_REVERSAL_MOVEMENT_TYPES = Set.of("102", "122");
+    private static final Set<String> SETTLEMENT_REVERSAL_CANCELLATION_MOVEMENT_TYPES = Set.of("123");
+    private static final Set<String> RETURN_MOVEMENT_TYPES = Set.of("161");
     private static final Set<String> RETURN_REVERSAL_MOVEMENT_TYPES = Set.of("162");
     private final PortalProperties properties;
     private final VendorScopeResolver scopeResolver;
@@ -184,15 +187,20 @@ public class PortalController {
             ReconciliationLine line = reconciliationLine(receipt);
             if (!line.receiptKey().isBlank()) linesByReceipt.put(line.receiptKey(), line);
         }
-        applyReturns(linesByReceipt);
+        applySettlementReversals(linesByReceipt);
+        applyReturnBalances(linesByReceipt);
         Map<String, BigDecimal> settledByReceipt = new LinkedHashMap<>();
         Map<String, BigDecimal> unsettledByPurchaseOrderLine = new LinkedHashMap<>();
+        Map<String, LinkedHashSet<String>> invoiceReferencesByPurchaseOrderLine = new LinkedHashMap<>();
         for (JsonNode invoice : invoices) {
             BigDecimal quantity = invoiceQuantity(invoice);
             if (quantity == null || quantity.signum() == 0) continue;
+            String purchaseOrderLineKey = purchaseOrderLineKey(invoice);
+            String invoiceReference = invoiceReference(invoice);
+            if (!invoiceReference.isBlank()) invoiceReferencesByPurchaseOrderLine.computeIfAbsent(purchaseOrderLineKey, ignored -> new LinkedHashSet<>()).add(invoiceReference);
             String receiptKey = receiptReferenceKey(invoice);
             if (!receiptKey.isBlank() && linesByReceipt.containsKey(receiptKey)) settledByReceipt.merge(receiptKey, quantity, BigDecimal::add);
-            else unsettledByPurchaseOrderLine.merge(purchaseOrderLineKey(invoice), quantity, BigDecimal::add);
+            else unsettledByPurchaseOrderLine.merge(purchaseOrderLineKey, quantity, BigDecimal::add);
         }
         Map<String, List<String>> receiptKeysByPurchaseOrderLine = new LinkedHashMap<>();
         linesByReceipt.values().forEach(line -> receiptKeysByPurchaseOrderLine.computeIfAbsent(line.purchaseOrderLineKey(), ignored -> new ArrayList<>()).add(line.receiptKey()));
@@ -206,7 +214,8 @@ public class PortalController {
                     exactSettled = allocated;
                     unallocated = unallocated.subtract(allocated);
                 }
-                linesByReceipt.put(receiptKey, line.withSettledQuantity(exactSettled.max(BigDecimal.ZERO)));
+                String settlementInvoices = String.join(", ", invoiceReferencesByPurchaseOrderLine.getOrDefault(line.purchaseOrderLineKey(), new LinkedHashSet<>()));
+                linesByReceipt.put(receiptKey, line.withSettledQuantity(exactSettled.max(BigDecimal.ZERO)).withSettlementInvoices(settlementInvoices));
             }
         }
         return new ArrayList<>(linesByReceipt.values());
@@ -220,7 +229,6 @@ public class PortalController {
         String receiptKey = document + ":" + year + ":" + canonicalItemNumber(item);
         BigDecimal quantity = firstDecimal(receipt, "QuantityInEntryUnit", "Quantity", "EntryQuantity");
         if (quantity == null) quantity = BigDecimal.ZERO;
-        if (RETURN_MOVEMENT_TYPES.contains(firstText(receipt, "GoodsMovementType"))) quantity = quantity.negate();
         String entryUnit = firstText(receipt, "EntryUnit", "QuantityUnit", "BaseUnit");
         String purchaseOrderUnit = firstText(receipt, "PurchaseOrderQuantityUnit");
         boolean unitConsistent = entryUnit.isBlank() || purchaseOrderUnit.isBlank() || entryUnit.equalsIgnoreCase(purchaseOrderUnit);
@@ -228,22 +236,37 @@ public class PortalController {
                 firstText(receipt, "Material"), firstText(receipt, "MaterialDescription"), firstText(receipt, "PostingDate"),
                 firstText(receipt, "GoodsMovementType"), entryUnit, purchaseOrderUnit, firstText(receipt, "CompanyCode"),
                 firstText(receipt, "DocumentCurrency"), firstText(receipt, "TaxCode"), firstDecimal(receipt, "NetPriceAmount"),
-                firstDecimal(receipt, "NetPriceQuantity"), quantity, BigDecimal.ZERO, unitConsistent);
+                firstDecimal(receipt, "NetPriceQuantity"), quantity, BigDecimal.ZERO, BigDecimal.ZERO, "", unitConsistent);
     }
-    private void applyReturns(Map<String, ReconciliationLine> linesByReceipt) {
+    private void applySettlementReversals(Map<String, ReconciliationLine> linesByReceipt) {
         Map<String, List<ReconciliationLine>> linesByOrderLine = new LinkedHashMap<>();
         linesByReceipt.values().forEach(line -> linesByOrderLine.computeIfAbsent(line.purchaseOrderLineKey(), ignored -> new ArrayList<>()).add(line));
         for (List<ReconciliationLine> lines : linesByOrderLine.values()) {
-            BigDecimal returned = lines.stream().filter(line -> RETURN_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(line -> line.receivedQuantity().abs()).reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal reversed = lines.stream().filter(line -> RETURN_REVERSAL_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(ReconciliationLine::receivedQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal netReturn = returned.subtract(reversed).max(BigDecimal.ZERO);
-            for (int index = lines.size() - 1; index >= 0 && netReturn.signum() > 0; index--) {
+            BigDecimal reversed = lines.stream().filter(line -> SETTLEMENT_REVERSAL_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(ReconciliationLine::receivedQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal reversalCanceled = lines.stream().filter(line -> SETTLEMENT_REVERSAL_CANCELLATION_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(ReconciliationLine::receivedQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal netReversal = reversed.subtract(reversalCanceled).max(BigDecimal.ZERO);
+            for (int index = lines.size() - 1; index >= 0 && netReversal.signum() > 0; index--) {
                 ReconciliationLine line = lines.get(index);
-                if (line.receivedQuantity().signum() <= 0 || RETURN_MOVEMENT_TYPES.contains(line.goodsMovementType()) || RETURN_REVERSAL_MOVEMENT_TYPES.contains(line.goodsMovementType())) continue;
-                BigDecimal offset = line.receivedQuantity().min(netReturn);
+                if (line.receivedQuantity().signum() <= 0 || !SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(line.goodsMovementType())) continue;
+                BigDecimal offset = line.receivedQuantity().min(netReversal);
                 ReconciliationLine adjusted = line.withReceivedQuantity(line.receivedQuantity().subtract(offset));
                 linesByReceipt.put(adjusted.receiptKey(), adjusted);
-                netReturn = netReturn.subtract(offset);
+                netReversal = netReversal.subtract(offset);
+            }
+        }
+    }
+    private void applyReturnBalances(Map<String, ReconciliationLine> linesByReceipt) {
+        Map<String, List<ReconciliationLine>> linesByOrderLine = new LinkedHashMap<>();
+        linesByReceipt.values().forEach(line -> linesByOrderLine.computeIfAbsent(line.purchaseOrderLineKey(), ignored -> new ArrayList<>()).add(line));
+        for (List<ReconciliationLine> lines : linesByOrderLine.values()) {
+            BigDecimal returned = lines.stream().filter(line -> RETURN_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(ReconciliationLine::receivedQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal reversalCanceled = lines.stream().filter(line -> RETURN_REVERSAL_MOVEMENT_TYPES.contains(line.goodsMovementType())).map(ReconciliationLine::receivedQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal remainingReturn = returned.subtract(reversalCanceled).max(BigDecimal.ZERO);
+            for (ReconciliationLine line : lines) {
+                if (!RETURN_MOVEMENT_TYPES.contains(line.goodsMovementType())) continue;
+                BigDecimal actualReturn = line.receivedQuantity().min(remainingReturn);
+                linesByReceipt.put(line.receiptKey(), line.withActualReturnQuantity(actualReturn));
+                remainingReturn = remainingReturn.subtract(actualReturn);
             }
         }
     }
@@ -256,6 +279,12 @@ public class PortalController {
         String document = firstText(invoice, "ReferenceDocument", "MaterialDocument", "GoodsReceiptDocument");
         if (document.isBlank()) return "";
         return document + ":" + firstText(invoice, "ReferenceDocumentYear", "ReferenceDocumentFiscalYear", "MaterialDocumentYear") + ":" + canonicalItemNumber(firstText(invoice, "ReferenceDocumentItem", "MaterialDocumentItem", "GoodsReceiptDocumentItem"));
+    }
+    private String invoiceReference(JsonNode invoice) {
+        String number = firstText(invoice, "SupplierInvoice", "SupplierInvoiceID", "InvoiceNumber");
+        if (number.isBlank()) return "";
+        String year = firstText(invoice, "FiscalYear");
+        return year.isBlank() ? number : number + "/" + year;
     }
     private BigDecimal firstDecimal(JsonNode record, String... fields) {
         for (String field : fields) {
@@ -336,16 +365,18 @@ public class PortalController {
         if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
     }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
-    private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, boolean unitConsistent) {
-        ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, unitConsistent); }
-        ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, unitConsistent); }
+    private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent) {
+        ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent); }
+        ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, actualReturnQuantity, settlementInvoices, unitConsistent); }
+        ReconciliationLine withActualReturnQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, value, settlementInvoices, unitConsistent); }
+        ReconciliationLine withSettlementInvoices(String value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, actualReturnQuantity, value, unitConsistent); }
         String purchaseOrderLineKey() { return purchaseOrder + ":" + canonicalItemNumber(purchaseOrderItem); }
-        boolean canSettle() { return receivedQuantity.signum() > 0 && unitConsistent && !RETURN_MOVEMENT_TYPES.contains(goodsMovementType) && !RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType); }
+        boolean canSettle() { return receivedQuantity.signum() > 0 && unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
         BigDecimal remainingQuantity() { return canSettle() ? receivedQuantity.subtract(settledQuantity).max(BigDecimal.ZERO) : BigDecimal.ZERO; }
-        String settlementStatus() { if (RETURN_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货"; if (RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货冲销"; if (!unitConsistent) return "单位不一致"; return remainingQuantity().signum() > 0 ? "可结算" : "已结算"; }
+        String settlementStatus() { if (RETURN_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货"; if (RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货冲销"; if ("102".equals(goodsMovementType)) return "收货冲销"; if ("122".equals(goodsMovementType)) return "部分冲销"; if ("123".equals(goodsMovementType)) return "部分冲销冲销"; if (!unitConsistent) return "单位不一致"; return remainingQuantity().signum() > 0 ? "可结算" : "已结算"; }
         Map<String, Object> view() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("receiptKey", receiptKey); result.put("purchaseOrder", purchaseOrder); result.put("purchaseOrderItem", purchaseOrderItem); result.put("materialDocument", materialDocument); result.put("materialDocumentYear", materialDocumentYear); result.put("materialDocumentItem", materialDocumentItem); result.put("material", material); result.put("materialDescription", materialDescription); result.put("postingDate", postingDate); result.put("goodsMovementType", goodsMovementType); result.put("unit", entryUnit); result.put("purchaseOrderUnit", purchaseOrderUnit); result.put("companyCode", companyCode); result.put("documentCurrency", documentCurrency); result.put("taxCode", taxCode); result.put("netPriceAmount", decimal(netPriceAmount)); result.put("netPriceQuantity", decimal(netPriceQuantity)); result.put("receivedQuantity", decimal(receivedQuantity)); result.put("settledQuantity", decimal(settledQuantity)); result.put("remainingQuantity", decimal(remainingQuantity())); result.put("settlementStatus", settlementStatus()); return result;
+            result.put("receiptKey", receiptKey); result.put("purchaseOrder", purchaseOrder); result.put("purchaseOrderItem", purchaseOrderItem); result.put("materialDocument", materialDocument); result.put("materialDocumentYear", materialDocumentYear); result.put("materialDocumentItem", materialDocumentItem); result.put("material", material); result.put("materialDescription", materialDescription); result.put("postingDate", postingDate); result.put("goodsMovementType", goodsMovementType); result.put("unit", entryUnit); result.put("purchaseOrderUnit", purchaseOrderUnit); result.put("companyCode", companyCode); result.put("documentCurrency", documentCurrency); result.put("taxCode", taxCode); result.put("netPriceAmount", decimal(netPriceAmount)); result.put("netPriceQuantity", decimal(netPriceQuantity)); result.put("receivedQuantity", decimal(receivedQuantity)); result.put("settledQuantity", decimal(settledQuantity)); result.put("actualReturnQuantity", decimal(actualReturnQuantity)); result.put("remainingQuantity", decimal(remainingQuantity())); result.put("settlementInvoices", settlementInvoices); result.put("settlementStatus", settlementStatus()); return result;
         }
         private String decimal(BigDecimal value) { return value == null ? "" : value.stripTrailingZeros().toPlainString(); }
     }

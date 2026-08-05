@@ -110,7 +110,7 @@ class PortalControllerTest {
     }
 
     @Test
-    void treats161AsReturnAnd162AsReturnReversalInSettlementQuantity() throws Exception {
+    void appliesGoodsReceiptAndReturnReversalFormulasSeparately() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = reconciliationClient(true);
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
@@ -122,11 +122,19 @@ class PortalControllerTest {
         List<Map<String, Object>> records = (List<Map<String, Object>>) response.get("records");
 
         assertThat(records).filteredOn(row -> "5000000001".equals(row.get("materialDocument"))).singleElement().satisfies(row -> {
-            assertThat(row.get("receivedQuantity")).isEqualTo("8");
-            assertThat(row.get("remainingQuantity")).isEqualTo("4");
+            assertThat(row.get("materialDocumentYear")).isEqualTo("2026");
+            assertThat(row.get("receivedQuantity")).isEqualTo("6");
+            assertThat(row.get("remainingQuantity")).isEqualTo("2");
+            assertThat(row.get("settlementInvoices")).isEqualTo("5100000001/2026");
         });
-        assertThat(records).filteredOn(row -> "161".equals(row.get("goodsMovementType"))).singleElement().extracting(row -> row.get("settlementStatus")).isEqualTo("退货");
-        assertThat(records).filteredOn(row -> "162".equals(row.get("goodsMovementType"))).singleElement().extracting(row -> row.get("settlementStatus")).isEqualTo("退货冲销");
+        assertThat(records).filteredOn(row -> "161".equals(row.get("goodsMovementType"))).singleElement().satisfies(row -> {
+            assertThat(row.get("settlementStatus")).isEqualTo("退货");
+            assertThat(row.get("actualReturnQuantity")).isEqualTo("2");
+        });
+        assertThat(records).filteredOn(row -> "162".equals(row.get("goodsMovementType"))).singleElement().satisfies(row -> {
+            assertThat(row.get("settlementStatus")).isEqualTo("退货冲销");
+            assertThat(row.get("actualReturnQuantity")).isEqualTo("0");
+        });
     }
 
     private SapODataClient reconciliationClient() throws Exception {
@@ -138,7 +146,7 @@ class PortalControllerTest {
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
             if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"CompanyCode\":\"1000\",\"DocumentCurrency\":\"CNY\"}"));
-            if ("A_SupplierInvoice".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"SupplierInvoice\":\"5100000001\",\"InvoicingParty\":\"133000006\",\"to_SuplrInvcItemPurOrdRef\":{\"results\":[{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"QuantityInPurchaseOrderUnit\":4}]}}"));
+            if ("A_SupplierInvoice".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"SupplierInvoice\":\"5100000001\",\"FiscalYear\":\"2026\",\"InvoicingParty\":\"133000006\",\"to_SuplrInvcItemPurOrdRef\":{\"results\":[{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"QuantityInPurchaseOrderUnit\":4}]}}"));
             return List.of();
         });
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
@@ -147,6 +155,9 @@ class PortalControllerTest {
             JsonNode receipt = objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}");
             if (!includesReturnAndReversal) return List.of(receipt);
             return List.of(receipt,
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000004\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"102\",\"QuantityInEntryUnit\":2,\"EntryUnit\":\"EA\"}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000005\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"122\",\"QuantityInEntryUnit\":3,\"EntryUnit\":\"EA\"}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000006\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"123\",\"QuantityInEntryUnit\":1,\"EntryUnit\":\"EA\"}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000002\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"161\",\"QuantityInEntryUnit\":3,\"EntryUnit\":\"EA\"}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000003\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"162\",\"QuantityInEntryUnit\":1,\"EntryUnit\":\"EA\"}"));
         });
