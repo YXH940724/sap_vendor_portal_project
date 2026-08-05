@@ -82,7 +82,9 @@ public class PortalController {
     @GetMapping("/reconciliation") public Map<String, Object> reconciliation(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
-        List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream().filter(ReconciliationLine::isSettlementCandidate).map(ReconciliationLine::view).toList();
+        List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream()
+                .filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0)
+                .map(ReconciliationLine::view).toList();
         return Map.of("vendorId", scope.vendorId(), "records", records, "count", records.size(), "retrievedAt", Instant.now().toString());
     }
     @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) {

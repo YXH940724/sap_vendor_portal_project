@@ -132,7 +132,7 @@ class PortalControllerTest {
     }
 
     @Test
-    void appliesGoodsReceiptAndReturnReversalFormulasSeparately() throws Exception {
+    void hidesFullyReversedGoodsReceiptFromReconciliation() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = reconciliationClient(true);
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
@@ -143,12 +143,7 @@ class PortalControllerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) response.get("records");
 
-        assertThat(records).singleElement().satisfies(row -> {
-            assertThat(row.get("materialDocumentYear")).isEqualTo("2026");
-            assertThat(row.get("receivedQuantity")).isEqualTo("6");
-            assertThat(row.get("remainingQuantity")).isEqualTo("2");
-            assertThat(row.get("settlementInvoices")).isEqualTo("5100000001/2026");
-        });
+        assertThat(records).isEmpty();
     }
 
     private SapODataClient reconciliationClient() throws Exception {
@@ -169,7 +164,7 @@ class PortalControllerTest {
             JsonNode receipt = objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}");
             if (!includesReturnAndReversal) return List.of(receipt);
             return List.of(receipt,
-                    objectMapper.readTree("{\"MaterialDocument\":\"5000000004\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"102\",\"QuantityInEntryUnit\":2,\"EntryUnit\":\"EA\"}"),
+                    objectMapper.readTree("{\"MaterialDocument\":\"5000000004\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"102\",\"QuantityInEntryUnit\":8,\"EntryUnit\":\"EA\"}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000005\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"122\",\"QuantityInEntryUnit\":3,\"EntryUnit\":\"EA\"}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000006\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"123\",\"QuantityInEntryUnit\":1,\"EntryUnit\":\"EA\"}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000002\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"161\",\"QuantityInEntryUnit\":3,\"EntryUnit\":\"EA\"}"),
