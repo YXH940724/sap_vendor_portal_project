@@ -28,7 +28,7 @@ const statusOptions = {
   asns: ['未处理', '部分处理', '已完成', '已取消'],
   materialDocuments: ['收货', '收货冲销', '部分退回', '部分退回冲销', '退货', '退货冲销']
 };
-let currentRoute = 'dashboard'; let records = []; let vendorId = '—'; let currentPage = 1; const pageSize = 10; const selectedOrderLines = new Map(); const selectedReceiptLines = new Map();
+let currentRoute = 'dashboard'; let records = []; let vendorId = '—'; let currentPage = 1; const pageSize = 10; const selectedOrderLines = new Map(); const selectedReceiptLines = new Map(); const aiHistory = [];
 const $ = (selector) => document.querySelector(selector); const page = $('#pageContainer');
 
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.route)));
@@ -37,7 +37,7 @@ $('#closeDrawer').addEventListener('click', closeDrawer); $('#drawerOverlay').ad
 
 async function boot() {
   try { const [health, session] = await Promise.all([api('/api/health'), api('/api/session')]); vendorId = session.vendorId; $('#vendorScope').textContent = `供应商 ${vendorId}`; $('#vendorName').textContent = `供应商工作空间`; $('#connectionLabel').textContent = health.configured ? '已就绪' : '待配置'; } catch { $('#connectionLabel').textContent = '连接异常'; }
-  navigate(location.hash.replace('#/', '') || 'dashboard');
+  initAiAssistant(); navigate(location.hash.replace('#/', '') || 'dashboard');
 }
 function navigate(route) {
   currentRoute = resources[route] ? route : 'dashboard'; location.hash = `/${currentRoute}`; $('.app-shell').classList.remove('nav-open');
@@ -176,5 +176,21 @@ function displayStatus(raw) { const text = value(raw); const status = { '01': '�
 function displayInvoiceStatus(raw) { const text = value(raw).toUpperCase(); return { A: '预制', B: '预制完成', D: '暂存', '5': '已过账' }[text] || displayStatus(raw); }
 function tone(status) { return /逾期|异常|取消/.test(status) ? 'danger' : /待/.test(status) ? 'warning' : /完成|确认|收货|对账/.test(status) ? 'success' : 'info'; }
 function present(value) { return value !== null && value !== undefined && value !== ''; } function value(value) { return !present(value) ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); } function escape(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); } function escapeAttr(value) { return escape(value === '—' ? '' : value); }
+function initAiAssistant() {
+  const launcher = $('#aiAssistantLauncher'); const assistant = $('#aiAssistant'); const close = $('#aiAssistantClose'); const form = $('#aiChatForm'); const input = $('#aiChatInput'); const status = $('#aiConnectionState'); const launcherStatus = $('#aiLauncherStatus');
+  launcher.addEventListener('click', () => { const visible = !assistant.hidden; assistant.hidden = visible; assistant.setAttribute('aria-hidden', String(visible)); if (!visible) input.focus(); }); close.addEventListener('click', () => { assistant.hidden = true; assistant.setAttribute('aria-hidden', 'true'); launcher.focus(); });
+  document.querySelectorAll('[data-ai-prompt]').forEach((button) => button.addEventListener('click', () => { input.value = button.dataset.aiPrompt; form.requestSubmit(); }));
+  form.addEventListener('submit', sendAiMessage);
+  api('/api/agent/status').then((state) => { const ready = state.enabled; status.textContent = ready ? '已连接智谱 AI · 仅当前供应商范围' : (state.issue || 'AI 服务待配置'); launcherStatus.textContent = ready ? 'ONLINE' : '待配置'; launcher.classList.toggle('ai-disabled', !ready); }).catch(() => { status.textContent = 'AI 服务状态读取失败'; launcherStatus.textContent = '异常'; });
+}
+function appendAiMessage(role, content) {
+  const conversation = $('#aiConversation'); const article = document.createElement('article'); article.className = 'ai-message ai-message-' + role; const body = document.createElement('div'); const title = document.createElement('b'); title.textContent = role === 'user' ? '您' : role === 'system' ? '服务提示' : '协同助手'; const text = document.createElement('p'); text.textContent = content; body.append(title, text);
+  if (role === 'agent') { const avatar = document.createElement('span'); avatar.className = 'ai-avatar'; avatar.textContent = '✦'; article.append(avatar); } article.append(body); conversation.append(article); conversation.scrollTop = conversation.scrollHeight; return article;
+}
+function appendAiTools(tools) { if (!tools?.length) return; const trace = document.createElement('div'); trace.className = 'ai-tool-trace'; trace.textContent = '已调用：'; tools.forEach((tool) => { const item = document.createElement('span'); item.textContent = tool.name + ' · ' + tool.summary; trace.append(item); }); $('#aiConversation').append(trace); $('#aiConversation').scrollTop = $('#aiConversation').scrollHeight; }
+async function sendAiMessage(event) {
+  event.preventDefault(); const input = $('#aiChatInput'); const question = input.value.trim(); if (!question) return; const send = $('#aiChatSend'); appendAiMessage('user', question); aiHistory.push({ role: 'user', content: question }); input.value = ''; send.disabled = true; send.textContent = '查询中…'; const pending = appendAiMessage('system', '正在判断协同任务并校验当前供应商范围…');
+  try { const result = await api('/api/agent/chat', { method: 'POST', body: JSON.stringify({ message: question, history: aiHistory.slice(-8) }) }); pending.remove(); appendAiMessage('agent', result.content || '未返回可用回答。'); appendAiTools(result.tools); aiHistory.push({ role: 'assistant', content: result.content || '' }); } catch (error) { pending.remove(); appendAiMessage('system', '暂时无法完成：' + error.message); } finally { send.disabled = false; send.innerHTML = '发送 <span>↗</span>'; input.focus(); }
+}
 async function api(url, options = {}) { const response = await fetch(url, { ...options, headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || `请求失败（${response.status}）`); return payload; }
 boot();

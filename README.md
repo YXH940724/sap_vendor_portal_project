@@ -13,13 +13,22 @@
 
 ```bash
 cp .env.example .env
-# 在 .env 中填写 SAP_USERNAME、SAP_PASSWORD 和 PORTAL_VENDOR_ID
+# 在 .env 中填写 SAP_USERNAME、SAP_PASSWORD、PORTAL_VENDOR_ID 和 ZHIPU_API_KEY
 mvn spring-boot:run
 ```
 
 访问 <http://localhost:3000>。
 
 > 请勿将 `.env`、SAP 凭据、Token 或身份代理密钥提交到 Git。
+
+## 供应商协同 AI 助手
+
+工作台右下角提供“供应商协同助手”。后端通过智谱对话补全 API 的 Function Calling 调用受控业务工具，支持当前供应商范围内的采购订单、ASN/发运、收货结算查询，以及 ASN/预制发票草稿依据生成。
+
+- 配置：在 `.env` 设置 `ZHIPU_API_KEY`；可选设置 `ZHIPU_MODEL`（默认 `glm-4.7`）和 `ZHIPU_BASE_URL`。
+- 边界：大模型只能理解问题、选择工具和组织回答；数量、金额、状态和供应商隔离均由 Java 服务端按 SAP 实时数据校验。
+- 写入：AI 仅生成草稿依据，ASN 与预制发票仍通过 Portal 表单由用户确认后提交，并执行既有服务端校验。
+- 安全：浏览器不接触智谱或 SAP 密钥；`vendorId` 从服务端登录范围注入，模型与前端均不能覆盖。
 
 ## 配置 SAP OData
 

@@ -113,6 +113,12 @@ public class PortalController {
         ObjectNode validated = validateAndBuildInvoice(input, scope.vendorId());
         return Map.of("vendorId", scope.vendorId(), "result", sapClient.createSupplierInvoice(scope.vendorId(), validated));
     }
+    public List<JsonNode> agentPurchaseOrders(String vendorId) { requireConfigured(); return load("purchaseOrders", vendorId, "", 100, List.of()); }
+    public List<JsonNode> agentAsns(String vendorId) { requireConfigured(); return load("asns", vendorId, "", 100, List.of()); }
+    public List<Map<String, Object>> agentReconciliation(String vendorId) {
+        requireConfigured();
+        return reconciliationLines(vendorId, 100).stream().filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0).map(ReconciliationLine::view).toList();
+    }
     private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {

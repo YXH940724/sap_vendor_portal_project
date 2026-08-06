@@ -9,6 +9,11 @@ portal:
   auth-mode: ${PORTAL_AUTH_MODE:single_vendor}
   vendor-id: ${PORTAL_VENDOR_ID:}
   identity-hmac-secret: ${PORTAL_IDENTITY_HMAC_SECRET:}
+  ai:
+    enabled: ${AI_ENABLED:true}
+    api-key: ${ZHIPU_API_KEY:}
+    base-url: ${ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4/chat/completions}
+    model: ${ZHIPU_MODEL:glm-4.7}
   sap:
     auth-mode: ${SAP_AUTH_MODE:basic}
     username: ${SAP_USERNAME:}

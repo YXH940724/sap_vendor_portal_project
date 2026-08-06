@@ -8,6 +8,7 @@ public class PortalProperties {
     private String vendorId;
     private String identityHmacSecret;
     private final Sap sap = new Sap();
+    private final Ai ai = new Ai();
 
     public String getAuthMode() { return authMode; }
     public void setAuthMode(String authMode) { this.authMode = authMode; }
@@ -16,6 +17,7 @@ public class PortalProperties {
     public String getIdentityHmacSecret() { return identityHmacSecret; }
     public void setIdentityHmacSecret(String identityHmacSecret) { this.identityHmacSecret = identityHmacSecret; }
     public Sap getSap() { return sap; }
+    public Ai getAi() { return ai; }
 
     public String validationIssue() {
         if (!"single_vendor".equals(authMode) && !"proxy_hmac".equals(authMode)) return "PORTAL_AUTH_MODE 仅支持 single_vendor 或 proxy_hmac。";
@@ -56,6 +58,29 @@ public class PortalProperties {
         public Service getSupplierInvoice() { return supplierInvoice; }
         public String getAsnCreatePath() { return asnCreatePath; } public void setAsnCreatePath(String value) { asnCreatePath = value; }
         public String getAsnCreateVendorField() { return asnCreateVendorField; } public void setAsnCreateVendorField(String value) { asnCreateVendorField = value; }
+    }
+
+    public static class Ai {
+        private boolean enabled = true;
+        private String apiKey;
+        private String baseUrl = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+        private String model = "glm-4.7";
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean value) { enabled = value; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String value) { apiKey = value; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String value) { baseUrl = value; }
+        public String getModel() { return model; }
+        public void setModel(String value) { model = value; }
+        public boolean isConfigured() { return enabled && !blank(apiKey) && !blank(baseUrl) && !blank(model); }
+        public String configurationIssue() {
+            if (!enabled) return "AI 助手已关闭。";
+            if (blank(apiKey)) return "尚未配置 ZHIPU_API_KEY。";
+            if (blank(baseUrl) || blank(model)) return "AI 服务地址或模型未配置。";
+            return "";
+        }
+        private boolean blank(String value) { return value == null || value.isBlank(); }
     }
 
     public static class Service {
