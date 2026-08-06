@@ -402,7 +402,7 @@ public class PortalController {
         for (InvoiceSelection selection : selections) {
             ReconciliationLine source = available.get(selection.receiptKey());
             if (!first.companyCode().equals(source.companyCode()) || !first.documentCurrency().equals(source.documentCurrency())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "一次发票只能选择相同公司代码和币种的收货凭证行。");
-            if (source.materialDocument().isBlank() || source.materialDocumentYear().isBlank() || source.materialDocumentItem().isBlank() || source.purchaseOrder().isBlank() || source.purchaseOrderItem().isBlank() || source.purchaseOrderUnit().isBlank() || source.taxCode().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少凭证、采购订单、单位或税码，不能创建收货引用发票。");
+            if (source.materialDocument().isBlank() || source.materialDocumentYear().isBlank() || source.materialDocumentItem().isBlank() || source.purchaseOrder().isBlank() || source.purchaseOrderItem().isBlank() || source.purchaseOrderUnit().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少凭证、采购订单或单位，不能创建收货引用发票。");
             sapNetAmounts.add(source.expectedInvoiceNetAmount(selection.quantity()));
         }
         BigDecimal sapNetAmount = sapNetAmounts.stream().reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
@@ -463,7 +463,6 @@ public class PortalController {
     }
     private void validateAsnSources(JsonNode input, String vendorId) {
         LinkedHashSet<String> requested = new LinkedHashSet<>();
-        Map<String, BigDecimal> requestedByOrderLine = new LinkedHashMap<>();
         input.path("sourcePurchaseOrders").forEach(value -> { if (!value.asText().isBlank()) requested.add(value.asText()); });
         input.path("items").forEach(item -> {
             String purchaseOrder = item.path("sourcePurchaseOrder").asText();
@@ -471,20 +470,11 @@ public class PortalController {
             if (!purchaseOrder.isBlank()) requested.add(purchaseOrder);
             BigDecimal quantity = firstDecimal(item, "quantity");
             if (purchaseOrder.isBlank() || purchaseOrderItem.isBlank() || quantity == null || quantity.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "每个 ASN 行必须包含订单、行号和大于零的发运数量。");
-            requestedByOrderLine.merge(purchaseOrder + ":" + canonicalItemNumber(purchaseOrderItem), quantity, BigDecimal::add);
         });
         if (requested.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请至少选择一个采购订单行后再创建 ASN。");
         List<JsonNode> orderLines = loadPurchaseOrders(vendorId, 100);
         List<String> allowed = purchaseOrderIds(orderLines);
         if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
-        Map<String, JsonNode> orderLineByKey = new LinkedHashMap<>();
-        orderLines.forEach(line -> orderLineByKey.put(purchaseOrderLineKey(line), line));
-        for (Map.Entry<String, BigDecimal> entry : requestedByOrderLine.entrySet()) {
-            JsonNode source = orderLineByKey.get(entry.getKey());
-            if (source == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单行不属于当前供应商，已拒绝创建 ASN。");
-            BigDecimal available = firstDecimal(source, "AsnAvailableQuantity");
-            if (available == null || entry.getValue().compareTo(available) > 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "订单行 " + entry.getKey() + " 的本次发运数量超过实时可发运数量 " + decimal(available == null ? BigDecimal.ZERO : available) + "。");
-        }
     }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent) {

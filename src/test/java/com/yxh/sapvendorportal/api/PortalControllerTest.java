@@ -166,6 +166,25 @@ class PortalControllerTest {
     }
 
     @Test
+    void createsInvoiceWhenSapPurchaseOrderDoesNotReturnTaxCode() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = reconciliationClient();
+        when(sapClient.createSupplierInvoice(anyString(), any())).thenReturn(objectMapper.createObjectNode());
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        JsonNode input = objectMapper.readTree("""
+                {"invoiceReference":"SUP-INV-003","documentDate":"2026-08-03","postingDate":"2026-08-03",
+                 "netAmount":60,"taxAmount":0,"grossAmount":60,"items":[
+                  {"receiptKey":"5000000001:2026:1","quantity":6}
+                ]}
+                """);
+
+        Map<String, Object> response = controller.createInvoice(input, mock(HttpServletRequest.class));
+        assertThat(response).containsKey("result");
+    }
+
+    @Test
     void hidesFullyReversedGoodsReceiptFromReconciliation() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = reconciliationClient(true);
@@ -194,7 +213,7 @@ class PortalControllerTest {
         });
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
-            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"PurchaseOrderQuantityUnit\":\"EA\",\"NetPriceAmount\":10,\"NetPriceQuantity\":1,\"TaxCode\":\"V0\"}"));
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PurchaseOrderItemText\":\"精密轴承\",\"PurchaseOrderQuantityUnit\":\"EA\",\"NetPriceAmount\":10,\"NetPriceQuantity\":1}"));
             JsonNode receipt = objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}");
             if (!includesReturnAndReversal) return List.of(receipt);
             return List.of(receipt,
