@@ -19,9 +19,15 @@ class SapODataClientTest {
         Method payloadMethod = SapODataClient.class.getDeclaredMethod("inboundDeliveryPayload", String.class, com.fasterxml.jackson.databind.JsonNode.class);
         payloadMethod.setAccessible(true);
 
-        assertThat(((com.fasterxml.jackson.databind.node.ObjectNode) payloadMethod.invoke(client, "133000006", objectMapper.readTree("""
-                {"plannedDeliveryDate":"2026-08-06","items":[]}
-                """))).path("DeliveryDate").asText()).isEqualTo("2026-08-06T00:00:00");
+        com.fasterxml.jackson.databind.node.ObjectNode payload = (com.fasterxml.jackson.databind.node.ObjectNode) payloadMethod.invoke(client, "133000006", objectMapper.readTree("""
+                {"plannedDeliveryDate":"2026-08-06","items":[
+                  {"sourcePurchaseOrder":"4500000010","quantity":12.50,"unit":"EA"}
+                ]}
+                """));
+
+        assertThat(payload.path("DeliveryDate").asText()).isEqualTo("2026-08-06T00:00:00");
+        assertThat(payload.path("to_DeliveryDocumentItem").path("results").get(0).path("ActualDeliveryQuantity").isTextual()).isTrue();
+        assertThat(payload.path("to_DeliveryDocumentItem").path("results").get(0).path("ActualDeliveryQuantity").asText()).isEqualTo("12.5");
     }
 
     @Test

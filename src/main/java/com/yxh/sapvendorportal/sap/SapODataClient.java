@@ -81,7 +81,7 @@ public class SapODataClient {
             copyText(source, item, "sourcePurchaseOrder", "ReferenceSDDocument");
             copyText(source, item, "sourcePurchaseOrderItem", "ReferenceSDDocumentItem");
             copyText(source, item, "material", "Material");
-            if (source.hasNonNull("quantity")) item.set("ActualDeliveryQuantity", source.get("quantity"));
+            if (source.hasNonNull("quantity")) item.put("ActualDeliveryQuantity", source.get("quantity").asText());
             copyText(source, item, "unit", "DeliveryQuantityUnit");
             items.add(item);
         });
