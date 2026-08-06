@@ -63,8 +63,8 @@ public class PortalProperties {
     public static class Ai {
         private boolean enabled = true;
         private String apiKey;
-        private String baseUrl = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-        private String model = "glm-4.7";
+        private String baseUrl = "https://api.deepseek.com/chat/completions";
+        private String model = "deepseek-v4-flash";
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean value) { enabled = value; }
         public String getApiKey() { return apiKey; }
@@ -76,7 +76,7 @@ public class PortalProperties {
         public boolean isConfigured() { return enabled && !blank(apiKey) && !blank(baseUrl) && !blank(model); }
         public String configurationIssue() {
             if (!enabled) return "AI 助手已关闭。";
-            if (blank(apiKey)) return "尚未配置 ZHIPU_API_KEY。";
+            if (blank(apiKey)) return "尚未配置 DEEPSEEK_API_KEY。";
             if (blank(baseUrl) || blank(model)) return "AI 服务地址或模型未配置。";
             return "";
         }

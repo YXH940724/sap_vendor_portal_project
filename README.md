@@ -13,7 +13,7 @@
 
 ```bash
 cp .env.example .env
-# 在 .env 中填写 SAP_USERNAME、SAP_PASSWORD、PORTAL_VENDOR_ID 和 ZHIPU_API_KEY
+# 在 .env 中填写 SAP_USERNAME、SAP_PASSWORD、PORTAL_VENDOR_ID 和 DEEPSEEK_API_KEY
 mvn spring-boot:run
 ```
 
@@ -23,12 +23,13 @@ mvn spring-boot:run
 
 ## 供应商协同 AI 助手
 
-工作台右下角提供“供应商协同助手”。后端通过智谱对话补全 API 的 Function Calling 调用受控业务工具，支持当前供应商范围内的采购订单、ASN/发运、收货结算查询，以及 ASN/预制发票草稿依据生成。
+工作台右下角提供“供应商协同助手”。后端通过 DeepSeek Chat Completions 的 Function Calling 调用受控业务工具，支持当前供应商范围内的采购订单、ASN/发运、收货结算查询，以及 ASN/预制发票草稿依据生成。
 
-- 配置：在 `.env` 设置 `ZHIPU_API_KEY`；可选设置 `ZHIPU_MODEL`（默认 `glm-4.7`）和 `ZHIPU_BASE_URL`。
+- 配置：在 `.env` 设置 `DEEPSEEK_API_KEY`；可选设置 `DEEPSEEK_MODEL`（默认 `deepseek-v4-flash`）和 `DEEPSEEK_BASE_URL`。
+- 模型说明：DeepSeek 的 `deepseek-chat` 曾指向 V3，但官方已公告该旧别名于 2026-07-24 停止服务；因此默认使用支持 Tool Calls 的 `deepseek-v4-flash`。如企业 DeepSeek 网关仍提供 V3 兼容模型，可仅覆盖 `DEEPSEEK_MODEL`，无需修改代码。
 - 边界：大模型只能理解问题、选择工具和组织回答；数量、金额、状态和供应商隔离均由 Java 服务端按 SAP 实时数据校验。
 - 写入：AI 仅生成草稿依据，ASN 与预制发票仍通过 Portal 表单由用户确认后提交，并执行既有服务端校验。
-- 安全：浏览器不接触智谱或 SAP 密钥；`vendorId` 从服务端登录范围注入，模型与前端均不能覆盖。
+- 安全：浏览器不接触 DeepSeek 或 SAP 密钥；`vendorId` 从服务端登录范围注入，模型与前端均不能覆盖。
 - 独立维护：运行时行为规则位于 `src/main/resources/ai/skills/supplier-collaboration-agent.md`，MCP 工具目录位于 `src/main/resources/ai/mcp-tools.json`；维护说明位于 `.codex/skills/supplier-collaboration-agent/SKILL.md`。调整后运行 `mvn test` 并重启服务。新增工具仍必须同步实现受控后端处理器和测试，不能仅修改 JSON 声明。
 
 ## 配置 SAP OData

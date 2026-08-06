@@ -23,20 +23,20 @@ import java.util.Map;
 public class SupplierCollaborationAgent {
     private static final int MAX_HISTORY_MESSAGES = 8;
     private static final int MAX_TOOL_ROUNDS = 3;
-    private final ZhipuChatClient zhipu;
+    private final DeepSeekChatClient deepSeek;
     private final PortalController portal;
     private final ObjectMapper objectMapper;
     private final AgentDefinitionLoader definitions;
 
-    public SupplierCollaborationAgent(ZhipuChatClient zhipu, PortalController portal, ObjectMapper objectMapper, AgentDefinitionLoader definitions) {
-        this.zhipu = zhipu;
+    public SupplierCollaborationAgent(DeepSeekChatClient deepSeek, PortalController portal, ObjectMapper objectMapper, AgentDefinitionLoader definitions) {
+        this.deepSeek = deepSeek;
         this.portal = portal;
         this.objectMapper = objectMapper;
         this.definitions = definitions;
     }
 
     public Map<String, Object> status() {
-        return Map.of("enabled", zhipu.configured(), "issue", zhipu.configurationIssue(), "provider", "智谱 AI", "agent", "供应商协同 Agent");
+        return Map.of("enabled", deepSeek.configured(), "issue", deepSeek.configurationIssue(), "provider", "DeepSeek AI", "agent", "供应商协同 Agent");
     }
 
     public Map<String, Object> chat(VendorScopeResolver.VendorScope scope, JsonNode input) {
@@ -47,13 +47,13 @@ public class SupplierCollaborationAgent {
         List<Map<String, String>> toolSummaries = new ArrayList<>();
         String answer = "";
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            ZhipuChatClient.Completion completion = zhipu.complete(messages, tools);
+            DeepSeekChatClient.Completion completion = deepSeek.complete(messages, tools);
             messages.add(completion.assistantMessage());
             if (completion.toolCalls().isEmpty()) {
                 answer = completion.content();
                 break;
             }
-            for (ZhipuChatClient.ToolCall call : completion.toolCalls()) {
+            for (DeepSeekChatClient.ToolCall call : completion.toolCalls()) {
                 ToolExecution execution = executeTool(call.name(), call.arguments(), scope.vendorId());
                 toolSummaries.add(Map.of("name", displayToolName(call.name()), "summary", execution.summary()));
                 ObjectNode toolResult = JsonNodeFactory.instance.objectNode();

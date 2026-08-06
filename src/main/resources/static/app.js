@@ -181,7 +181,7 @@ function initAiAssistant() {
   launcher.addEventListener('click', () => { const visible = !assistant.hidden; assistant.hidden = visible; assistant.setAttribute('aria-hidden', String(visible)); if (!visible) input.focus(); }); close.addEventListener('click', () => { assistant.hidden = true; assistant.setAttribute('aria-hidden', 'true'); launcher.focus(); });
   document.querySelectorAll('[data-ai-prompt]').forEach((button) => button.addEventListener('click', () => { input.value = button.dataset.aiPrompt; form.requestSubmit(); }));
   form.addEventListener('submit', sendAiMessage);
-  api('/api/agent/status').then((state) => { const ready = state.enabled; status.textContent = ready ? '已连接智谱 AI · 仅当前供应商范围' : (state.issue || 'AI 服务待配置'); launcherStatus.textContent = ready ? 'ONLINE' : '待配置'; launcher.classList.toggle('ai-disabled', !ready); }).catch(() => { status.textContent = 'AI 服务状态读取失败'; launcherStatus.textContent = '异常'; });
+  api('/api/agent/status').then((state) => { const ready = state.enabled; status.textContent = ready ? '已连接 DeepSeek AI · 仅当前供应商范围' : (state.issue || 'AI 服务待配置'); launcherStatus.textContent = ready ? 'ONLINE' : '待配置'; launcher.classList.toggle('ai-disabled', !ready); }).catch(() => { status.textContent = 'AI 服务状态读取失败'; launcherStatus.textContent = '异常'; });
 }
 function appendAiMessage(role, content) {
   const conversation = $('#aiConversation'); const article = document.createElement('article'); article.className = 'ai-message ai-message-' + role; const body = document.createElement('div'); const title = document.createElement('b'); title.textContent = role === 'user' ? '您' : role === 'system' ? '服务提示' : '协同助手'; const text = document.createElement('p'); text.textContent = content; body.append(title, text);

@@ -11,9 +11,9 @@ portal:
   identity-hmac-secret: ${PORTAL_IDENTITY_HMAC_SECRET:}
   ai:
     enabled: ${AI_ENABLED:true}
-    api-key: ${ZHIPU_API_KEY:}
-    base-url: ${ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4/chat/completions}
-    model: ${ZHIPU_MODEL:glm-4.7}
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/chat/completions}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
   sap:
     auth-mode: ${SAP_AUTH_MODE:basic}
     username: ${SAP_USERNAME:}
