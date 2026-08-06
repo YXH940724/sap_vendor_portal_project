@@ -7,6 +7,7 @@ import com.yxh.sapvendorportal.sap.SapODataClient;
 import com.yxh.sapvendorportal.security.VendorScopeResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -20,10 +21,41 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PortalControllerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void returnsPortalAsnNumberAndSapInboundDeliveryAfterCreation() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            return "PurchaseOrder".equals(service.getEntity()) ? List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\"}")) : List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            return "PurchaseOrderItem".equals(service.getEntity()) ? List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\"}")) : List.of();
+        });
+        when(sapClient.createAsn(eq("133000006"), any())).thenReturn(objectMapper.readTree("{\"d\":{\"DeliveryDocument\":\"1800000999\"}}"));
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        Map<String, Object> response = controller.createAsn(objectMapper.readTree("""
+                {"portalAsnNumber":"PASN-20260806000000-ABC12345","items":[
+                  {"sourcePurchaseOrder":"4500001001","sourcePurchaseOrderItem":"00010","quantity":2}
+                ]}
+                """), mock(HttpServletRequest.class));
+
+        assertThat(response.get("portalAsnNumber")).isEqualTo("PASN-20260806000000-ABC12345");
+        assertThat(response.get("sapInboundDelivery")).isEqualTo("1800000999");
+        ArgumentCaptor<JsonNode> request = ArgumentCaptor.forClass(JsonNode.class);
+        verify(sapClient).createAsn(eq("133000006"), request.capture());
+        assertThat(request.getValue().path("portalAsnNumber").asText()).isEqualTo("PASN-20260806000000-ABC12345");
+    }
 
     @Test
     void fillsReceiptMaterialDescriptionFromMatchingPurchaseOrderLineWithDifferentItemPadding() throws Exception {

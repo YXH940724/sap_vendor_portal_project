@@ -71,6 +71,7 @@ public class SapODataClient {
     private ObjectNode inboundDeliveryPayload(String vendorId, JsonNode input) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put(asnVendorField(), vendorId);
+        copyText(input, payload, "portalAsnNumber", "DeliveryDocumentBySupplier");
         String plannedDeliveryDate = input.path("plannedDeliveryDate").asText();
         if (!plannedDeliveryDate.isBlank()) payload.put("DeliveryDate", odataDateTime(plannedDeliveryDate));
         copyText(input, payload, "transportReference", "BillOfLading");
@@ -97,9 +98,10 @@ public class SapODataClient {
         payload.put("SupplierInvoiceIDByInvcgParty", input.path("invoiceReference").asText());
         payload.put("InvoicingParty", vendorId);
         payload.put("DocumentCurrency", input.path("documentCurrency").asText());
-        payload.set("InvoiceGrossAmount", input.path("grossAmount"));
+        payload.put("InvoiceGrossAmount", input.path("grossAmount").asText());
         copyText(input, payload, "headerText", "DocumentHeaderText");
         payload.put("TaxIsCalculatedAutomatically", true);
+        payload.put("SupplierInvoiceStatus", "A");
         ObjectNode itemContainer = objectMapper.createObjectNode();
         ArrayNode items = objectMapper.createArrayNode();
         int itemNumber = 1;
@@ -109,8 +111,8 @@ public class SapODataClient {
             copyText(source, item, "sourcePurchaseOrder", "PurchaseOrder");
             copyText(source, item, "sourcePurchaseOrderItem", "PurchaseOrderItem");
             item.put("DocumentCurrency", input.path("documentCurrency").asText());
-            item.set("SupplierInvoiceItemAmount", source.path("amount"));
-            item.set("QuantityInPurchaseOrderUnit", source.path("quantity"));
+            item.put("SupplierInvoiceItemAmount", source.path("amount").asText());
+            item.put("QuantityInPurchaseOrderUnit", source.path("quantity").asText());
             copyText(source, item, "unit", "PurchaseOrderQuantityUnit");
             copyText(source, item, "taxCode", "TaxCode");
             copyText(source, item, "sourceMaterialDocument", "ReferenceDocument");

@@ -15,6 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -22,10 +24,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
 public class PortalController {
+    private static final DateTimeFormatter PORTAL_ASN_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final Set<String> GOODS_RECEIPT_MOVEMENT_TYPES = Set.of("101", "102", "122", "123", "161", "162");
     private static final Set<String> SETTLEMENT_RECEIPT_MOVEMENT_TYPES = Set.of("101");
     private static final Set<String> SETTLEMENT_REVERSAL_MOVEMENT_TYPES = Set.of("102", "122");
@@ -88,8 +92,20 @@ public class PortalController {
         return Map.of("vendorId", scope.vendorId(), "records", records, "count", records.size(), "retrievedAt", Instant.now().toString());
     }
     @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) {
-        requireConfigured(); var scope = scopeResolver.resolve(request); validateAsnSources(input, scope.vendorId());
-        return Map.of("vendorId", scope.vendorId(), "result", sapClient.createAsn(scope.vendorId(), input));
+        requireConfigured();
+        var scope = scopeResolver.resolve(request);
+        ObjectNode submission = input instanceof ObjectNode object ? object.deepCopy() : JsonNodeFactory.instance.objectNode();
+        String portalAsnNumber = portalAsnNumber(submission);
+        submission.put("portalAsnNumber", portalAsnNumber);
+        validateAsnSources(submission, scope.vendorId());
+        JsonNode sapResult = sapClient.createAsn(scope.vendorId(), submission);
+        JsonNode delivery = sapResult.path("d").isObject() ? sapResult.path("d") : sapResult;
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("vendorId", scope.vendorId());
+        response.put("portalAsnNumber", portalAsnNumber);
+        response.put("sapInboundDelivery", firstText(delivery, "DeliveryDocument", "InbDelivery"));
+        response.put("result", sapResult);
+        return response;
     }
     @PostMapping("/invoices") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createInvoice(@RequestBody JsonNode input, HttpServletRequest request) {
         requireConfigured();
@@ -475,6 +491,14 @@ public class PortalController {
         List<JsonNode> orderLines = loadPurchaseOrders(vendorId, 100);
         List<String> allowed = purchaseOrderIds(orderLines);
         if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
+    }
+    private String portalAsnNumber(JsonNode input) {
+        String supplied = input.path("portalAsnNumber").asText().trim();
+        if (!supplied.isBlank()) {
+            if (!supplied.matches("[A-Za-z0-9_-]{1,35}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Portal ASN 单号仅支持字母、数字、连字符和下划线，且不超过 35 位。");
+            return supplied;
+        }
+        return "PASN-" + PORTAL_ASN_TIME.format(Instant.now()) + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent) {
