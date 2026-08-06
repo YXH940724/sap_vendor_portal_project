@@ -1,12 +1,29 @@
 package com.yxh.sapvendorportal.sap;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yxh.sapvendorportal.config.PortalProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SapODataClientTest {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void serializesAsnDeliveryDateAsODataDateTime() throws Exception {
+        SapODataClient client = new SapODataClient(new PortalProperties(), objectMapper);
+        Method payloadMethod = SapODataClient.class.getDeclaredMethod("inboundDeliveryPayload", String.class, com.fasterxml.jackson.databind.JsonNode.class);
+        payloadMethod.setAccessible(true);
+
+        assertThat(((com.fasterxml.jackson.databind.node.ObjectNode) payloadMethod.invoke(client, "133000006", objectMapper.readTree("""
+                {"plannedDeliveryDate":"2026-08-06","items":[]}
+                """))).path("DeliveryDate").asText()).isEqualTo("2026-08-06T00:00:00");
+    }
+
     @Test
     void acceptsCreatableAsnEntitySetFromMetadata() {
         SapODataClient.verifyEntitySetMetadata("""

@@ -71,7 +71,8 @@ public class SapODataClient {
     private ObjectNode inboundDeliveryPayload(String vendorId, JsonNode input) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put(asnVendorField(), vendorId);
-        copyText(input, payload, "plannedDeliveryDate", "DeliveryDate");
+        String plannedDeliveryDate = input.path("plannedDeliveryDate").asText();
+        if (!plannedDeliveryDate.isBlank()) payload.put("DeliveryDate", odataDateTime(plannedDeliveryDate));
         copyText(input, payload, "transportReference", "BillOfLading");
         ObjectNode itemContainer = objectMapper.createObjectNode();
         ArrayNode items = objectMapper.createArrayNode();
