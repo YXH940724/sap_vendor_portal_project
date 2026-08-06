@@ -26,11 +26,13 @@ public class SupplierCollaborationAgent {
     private final ZhipuChatClient zhipu;
     private final PortalController portal;
     private final ObjectMapper objectMapper;
+    private final AgentDefinitionLoader definitions;
 
-    public SupplierCollaborationAgent(ZhipuChatClient zhipu, PortalController portal, ObjectMapper objectMapper) {
+    public SupplierCollaborationAgent(ZhipuChatClient zhipu, PortalController portal, ObjectMapper objectMapper, AgentDefinitionLoader definitions) {
         this.zhipu = zhipu;
         this.portal = portal;
         this.objectMapper = objectMapper;
+        this.definitions = definitions;
     }
 
     public Map<String, Object> status() {
@@ -74,14 +76,7 @@ public class SupplierCollaborationAgent {
         ArrayNode messages = objectMapper.createArrayNode();
         ObjectNode system = messages.addObject();
         system.put("role", "system");
-        system.put("content", """
-                你是“供应商协同 Agent”，服务于当前登录供应商。
-                你只能调用已提供的工具获取 SAP 实时业务数据，且不得猜测订单、数量、日期、金额或状态。
-                对采购订单、ASN、收货、结算等事实性问题，必须优先调用工具；回答需简洁、中文、列出关键单据与下一步建议。
-                你不能跨供应商查询，不能修改供应商范围，不能要求或泄露密码、Token、API Key。
-                ASN 和预制发票工具仅生成草稿依据；实际提交由 Portal 现有表单经过用户确认与服务端二次校验完成。
-                当工具失败或无数据时，如实说明，建议用户核对筛选条件或刷新 SAP 数据。
-                """);
+        system.put("content", definitions.systemPrompt());
         int count = 0;
         for (JsonNode message : history) {
             if (count++ >= MAX_HISTORY_MESSAGES) break;
@@ -189,28 +184,7 @@ public class SupplierCollaborationAgent {
     }
 
     private ArrayNode toolDefinitions() {
-        ArrayNode tools = objectMapper.createArrayNode();
-        tools.add(functionTool("query_purchase_orders", "查询当前供应商的采购订单行、交期、收货和发运可用数量。", properties("keyword", "订单号、物料或描述关键字", "status", "订单状态（可选）")));
-        tools.add(functionTool("query_asn_status", "查询当前供应商已创建的 ASN / 发运通知及内向交货单状态。", properties("keyword", "ASN、订单号、物料或描述关键字")));
-        tools.add(functionTool("query_settlement_candidates", "查询当前供应商的收货凭证、已结算数量和可结算数量。", properties("keyword", "收货凭证、订单号或物料关键字", "status", "可结算或已结算（可选）")));
-        tools.add(functionTool("prepare_asn_draft", "根据一个采购订单查询可发运行，生成 ASN 草稿依据，不提交 SAP。", properties("purchaseOrder", "必填，采购订单号"), List.of("purchaseOrder")));
-        tools.add(functionTool("prepare_invoice_draft", "查询可用于创建 SAP 预制发票的收货结算行，不提交 SAP。", properties("purchaseOrder", "可选，采购订单号；不传则查询全部可结算行")));
-        return tools;
-    }
-
-    private ObjectNode functionTool(String name, String description, ObjectNode properties) { return functionTool(name, description, properties, List.of()); }
-    private ObjectNode functionTool(String name, String description, ObjectNode properties, List<String> required) {
-        ObjectNode tool = objectMapper.createObjectNode(); tool.put("type", "function");
-        ObjectNode function = tool.putObject("function"); function.put("name", name); function.put("description", description);
-        ObjectNode parameters = function.putObject("parameters"); parameters.put("type", "object"); parameters.set("properties", properties); parameters.put("additionalProperties", false);
-        ArrayNode requiredNode = parameters.putArray("required"); required.forEach(requiredNode::add);
-        return tool;
-    }
-
-    private ObjectNode properties(String... values) {
-        ObjectNode properties = objectMapper.createObjectNode();
-        for (int i = 0; i < values.length; i += 2) properties.putObject(values[i]).put("type", "string").put("description", values[i + 1]);
-        return properties;
+        return definitions.toolDefinitions();
     }
 
     private String displayToolName(String name) {

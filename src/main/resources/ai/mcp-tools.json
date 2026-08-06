@@ -1,0 +1,79 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "query_purchase_orders",
+      "description": "查询当前供应商的采购订单行、交期、收货和发运可用数量。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keyword": { "type": "string", "description": "订单号、物料或描述关键字" },
+          "status": { "type": "string", "description": "订单状态（可选）" }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_asn_status",
+      "description": "查询当前供应商已创建的 ASN、发运通知及内向交货单状态。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keyword": { "type": "string", "description": "ASN、订单号、物料或描述关键字" }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_settlement_candidates",
+      "description": "查询当前供应商的收货凭证、已结算数量和可结算数量。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keyword": { "type": "string", "description": "收货凭证、订单号或物料关键字" },
+          "status": { "type": "string", "description": "可结算或已结算（可选）" }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "prepare_asn_draft",
+      "description": "根据一个采购订单查询可发运行，生成 ASN 草稿依据，不提交 SAP。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "purchaseOrder": { "type": "string", "description": "必填，采购订单号" }
+        },
+        "additionalProperties": false,
+        "required": ["purchaseOrder"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "prepare_invoice_draft",
+      "description": "查询可用于创建 SAP 预制发票的收货结算行，不提交 SAP。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "purchaseOrder": { "type": "string", "description": "可选，采购订单号；不传则查询全部可结算行" }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  }
+]

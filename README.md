@@ -29,6 +29,7 @@ mvn spring-boot:run
 - 边界：大模型只能理解问题、选择工具和组织回答；数量、金额、状态和供应商隔离均由 Java 服务端按 SAP 实时数据校验。
 - 写入：AI 仅生成草稿依据，ASN 与预制发票仍通过 Portal 表单由用户确认后提交，并执行既有服务端校验。
 - 安全：浏览器不接触智谱或 SAP 密钥；`vendorId` 从服务端登录范围注入，模型与前端均不能覆盖。
+- 独立维护：运行时行为规则位于 `src/main/resources/ai/skills/supplier-collaboration-agent.md`，MCP 工具目录位于 `src/main/resources/ai/mcp-tools.json`；维护说明位于 `.codex/skills/supplier-collaboration-agent/SKILL.md`。调整后运行 `mvn test` 并重启服务。新增工具仍必须同步实现受控后端处理器和测试，不能仅修改 JSON 声明。
 
 ## 配置 SAP OData
 
