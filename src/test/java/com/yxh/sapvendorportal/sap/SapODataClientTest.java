@@ -38,12 +38,13 @@ class SapODataClientTest {
         payloadMethod.setAccessible(true);
 
         com.fasterxml.jackson.databind.node.ObjectNode payload = (com.fasterxml.jackson.databind.node.ObjectNode) payloadMethod.invoke(client, "133000006", objectMapper.readTree("""
-                {"companyCode":"1000","documentDate":"2026-08-06","postingDate":"2026-08-06",
+                {"companyCode":"1000","documentDate":"2026-08-06","postingDate":"2026-08-06","taxDeterminationDate":"2026-08-06",
                  "invoiceReference":"INV-001","documentCurrency":"CNY","grossAmount":119.00,
                  "items":[{"amount":100.00,"quantity":10.00,"unit":"EA"}]}
                 """));
 
         assertThat(payload.path("SupplierInvoiceStatus").asText()).isEqualTo("A");
+        assertThat(payload.path("TaxDeterminationDate").asText()).isEqualTo("2026-08-06T00:00:00");
         assertThat(payload.path("InvoiceGrossAmount").isTextual()).isTrue();
         assertThat(payload.path("InvoiceGrossAmount").asText()).isEqualTo("119.0");
         assertThat(payload.path("to_SuplrInvcItemPurOrdRef").path("results").get(0).path("SupplierInvoiceItemAmount").isTextual()).isTrue();

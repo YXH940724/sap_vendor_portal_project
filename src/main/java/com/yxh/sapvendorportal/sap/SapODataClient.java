@@ -95,6 +95,7 @@ public class SapODataClient {
         payload.put("CompanyCode", input.path("companyCode").asText());
         payload.put("DocumentDate", odataDateTime(input.path("documentDate").asText()));
         payload.put("PostingDate", odataDateTime(input.path("postingDate").asText()));
+        payload.put("TaxDeterminationDate", odataDateTime(input.path("taxDeterminationDate").asText()));
         payload.put("SupplierInvoiceIDByInvcgParty", input.path("invoiceReference").asText());
         payload.put("InvoicingParty", vendorId);
         payload.put("DocumentCurrency", input.path("documentCurrency").asText());

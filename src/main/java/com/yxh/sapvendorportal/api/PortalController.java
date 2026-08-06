@@ -385,6 +385,8 @@ public class PortalController {
         String invoiceReference = input.path("invoiceReference").asText().trim();
         String documentDate = input.path("documentDate").asText().trim();
         String postingDate = input.path("postingDate").asText().trim();
+        String taxDeterminationDate = input.path("taxDeterminationDate").asText().trim();
+        if (taxDeterminationDate.isBlank()) taxDeterminationDate = documentDate;
         if (invoiceReference.isBlank() || documentDate.isBlank() || postingDate.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请填写供应商发票号、凭证日期和过账日期。");
         Map<String, ReconciliationLine> available = new LinkedHashMap<>();
         reconciliationLines(vendorId, 100).forEach(line -> available.put(line.receiptKey(), line));
@@ -412,7 +414,7 @@ public class PortalController {
         ReconciliationLine first = available.get(selections.getFirst().receiptKey());
         if (first.companyCode().isBlank() || first.documentCurrency().isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少公司代码或币种，不能创建发票。");
         ObjectNode result = JsonNodeFactory.instance.objectNode();
-        result.put("invoiceReference", invoiceReference); result.put("documentDate", documentDate); result.put("postingDate", postingDate); result.put("companyCode", first.companyCode()); result.put("documentCurrency", first.documentCurrency());
+        result.put("invoiceReference", invoiceReference); result.put("documentDate", documentDate); result.put("postingDate", postingDate); result.put("taxDeterminationDate", taxDeterminationDate); result.put("companyCode", first.companyCode()); result.put("documentCurrency", first.documentCurrency());
         ArrayNode items = result.putArray("items");
         List<BigDecimal> sapNetAmounts = new ArrayList<>();
         for (InvoiceSelection selection : selections) {
