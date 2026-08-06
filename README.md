@@ -23,13 +23,9 @@ mvn spring-boot:run
 
 ## 配置 SAP OData
 
-`.env.example` 已写入本次提供的 5 个服务根地址。部署前需根据 SAP `$metadata` 校准每个服务的：
+`.env.example` 已写入本次提供的 5 个服务根地址；标准实体集和供应商隔离字段由 Portal 固定处理，无需逐项配置。创建 ASN 前，Portal 会读取 SAP `$metadata`，确认目标实体集存在且允许创建。
 
-- `*_ENTITY`：实体集名称；
-- `*_SUPPLIER_FIELD`：用于供应商隔离的字段；
-- `SAP_ASN_CREATE_PATH` / `SAP_ASN_CREATE_VENDOR_FIELD`：仅当 SAP 团队确认 ASN 写接口与字段后配置。
-
-默认值是常见 SAP API 实体名，但不同 PE/ES 租户的已发布服务可能不同。若隔离字段未配置，Portal 会返回配置错误而不是查询全量数据。
+如租户确认写入实体集不是 `A_InbDeliveryHeader`，可额外设置 `SAP_ASN_CREATE_PATH`；如供应商字段不是 `Supplier`，可设置 `SAP_ASN_CREATE_VENDOR_FIELD`。这两个配置仅用于租户扩展，不影响默认标准 API。
 
 ## 无数据库的账号与权限管理
 
@@ -49,9 +45,8 @@ mvn spring-boot:run
 
 ## 已实现与后续工作
 
-- 已实现：Java Spring Boot 服务端 OData 代理、V2/V4 响应兼容、供应商范围过滤、防止未配置范围时全量查询、供应商/PO/ASN/物料凭证/发票页面，以及 ASN 写接口的 CSRF 基础流程。
-- 后续需 SAP 团队确认：各服务 `$metadata`、ASN 创建实体及字段、GR/IR 与付款状态服务、OData 写权限、错误码与分页策略。
-- 当前 ASN 写 API 默认关闭，避免在未确认 SAP 对象与字段的情况下产生错误业务单据。
+- 已实现：Java Spring Boot 服务端 OData 代理、V2/V4 响应兼容、供应商范围过滤、防止未配置范围时全量查询、供应商/PO/ASN/物料凭证/发票页面，以及 ASN 写接口的 CSRF 和 `$metadata` 预检流程。
+- 后续需 SAP 团队确认：各服务的业务字段、GR/IR 与付款状态服务、ASN 创建权限及发运字段映射、错误码与分页策略。
 
 ## 验证
 

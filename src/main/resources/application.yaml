@@ -28,6 +28,9 @@ portal:
       entity: A_InbDeliveryHeader
       supplier-field: Supplier
       expand: to_DeliveryDocumentItem
+    # 仅当租户的 $metadata 确认 ASN 写入实体不同于标准实体时才配置；留空时使用 asn.entity。
+    asn-create-path: ${SAP_ASN_CREATE_PATH:}
+    asn-create-vendor-field: ${SAP_ASN_CREATE_VENDOR_FIELD:}
     material-document:
       url: ${SAP_MATERIAL_DOCUMENT_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_MATERIAL_DOCUMENT_SRV}
       entity: A_MaterialDocumentItem

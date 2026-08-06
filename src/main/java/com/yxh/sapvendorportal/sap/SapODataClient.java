@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class SapODataClient {
@@ -42,11 +44,13 @@ public class SapODataClient {
 
     public JsonNode createAsn(String vendorId, JsonNode input) {
         String base = properties.getSap().getAsn().getUrl().replaceAll("/$", "");
+        String createPath = asnCreatePath();
+        verifyAsnCreateTarget(base, createPath);
         HttpResponse<String> csrf = send(baseRequest(URI.create(base)).header("X-CSRF-Token", "Fetch").GET().build());
         if (csrf.statusCode() >= 400) throw sapError(csrf);
         String csrfToken = csrf.headers().firstValue("x-csrf-token").orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 未返回 CSRF Token，不能创建 ASN。"));
         ObjectNode payload = inboundDeliveryPayload(vendorId, input);
-        HttpRequest request = baseRequest(URI.create(base + "/A_InbDeliveryHeader"))
+        HttpRequest request = baseRequest(URI.create(base + "/" + createPath))
                 .header("Accept", "application/json").header("Content-Type", "application/json").header("X-CSRF-Token", csrfToken)
                 .POST(HttpRequest.BodyPublishers.ofString(write(payload), StandardCharsets.UTF_8)).build();
         return execute(request);
@@ -66,7 +70,7 @@ public class SapODataClient {
 
     private ObjectNode inboundDeliveryPayload(String vendorId, JsonNode input) {
         ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("Supplier", vendorId);
+        payload.put(asnVendorField(), vendorId);
         copyText(input, payload, "plannedDeliveryDate", "DeliveryDate");
         copyText(input, payload, "transportReference", "BillOfLading");
         ObjectNode itemContainer = objectMapper.createObjectNode();
@@ -129,9 +133,42 @@ public class SapODataClient {
                 : "Basic " + Base64.getEncoder().encodeToString((properties.getSap().getUsername() + ":" + properties.getSap().getPassword()).getBytes(StandardCharsets.UTF_8));
         return HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).header("Authorization", authorization);
     }
+    private String asnCreatePath() {
+        String configured = properties.getSap().getAsnCreatePath();
+        String path = blank(configured) ? properties.getSap().getAsn().getEntity() : configured.trim();
+        if (blank(path) || !path.matches("[A-Za-z][A-Za-z0-9_]*")) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "ASN 创建实体配置无效；请使用 SAP $metadata 中的实体集名称。 ");
+        }
+        return path;
+    }
+    private String asnVendorField() {
+        String configured = properties.getSap().getAsnCreateVendorField();
+        return blank(configured) ? "Supplier" : configured.trim();
+    }
+    private void verifyAsnCreateTarget(String base, String createPath) {
+        HttpResponse<String> response = send(baseRequest(URI.create(base + "/$metadata")).header("Accept", "application/xml").GET().build());
+        if (response.statusCode() >= 400) throw sapError(response);
+        verifyEntitySetMetadata(response.body(), createPath);
+    }
+    static void verifyEntitySetMetadata(String metadata, String entitySet) {
+        Pattern pattern = Pattern.compile("<EntitySet\\b(?=[^>]*\\bName\\s*=\\s*\"" + Pattern.quote(entitySet) + "\")[^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(metadata);
+        if (!matcher.find()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP $metadata 中未找到 ASN 创建实体集 " + entitySet + "；请核对 SAP_ASN_CREATE_PATH。 ");
+        }
+        String definition = matcher.group();
+        if (Pattern.compile("(?:sap:)?creatable\\s*=\\s*\"false\"", Pattern.CASE_INSENSITIVE).matcher(definition).find()) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP $metadata 表明 ASN 实体集 " + entitySet + " 不允许创建；请由 SAP 管理员开放写权限或提供可创建实体。 ");
+        }
+    }
     private JsonNode execute(HttpRequest request) { HttpResponse<String> response = send(request); if (response.statusCode() >= 400) throw sapError(response); try { return objectMapper.readTree(response.body()); } catch (Exception exception) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 返回了无法解析的响应。", exception); } }
     private HttpResponse<String> send(HttpRequest request) { try { return httpClient.send(request, HttpResponse.BodyHandlers.ofString()); } catch (Exception exception) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "无法连接 SAP OData 服务。", exception); } }
-    private ResponseStatusException sapError(HttpResponse<String> response) { try { JsonNode error = objectMapper.readTree(response.body()).path("error"); String message = error.path("message").path("value").asText(error.path("message").asText("SAP OData 返回 HTTP " + response.statusCode())); return new ResponseStatusException(HttpStatus.BAD_GATEWAY, message); } catch (Exception ignored) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP OData 返回 HTTP " + response.statusCode()); } }
+    private ResponseStatusException sapError(HttpResponse<String> response) { try { JsonNode error = objectMapper.readTree(response.body()).path("error"); String message = error.path("message").path("value").asText(error.path("message").asText("")); return new ResponseStatusException(HttpStatus.BAD_GATEWAY, sapErrorMessage(response.statusCode(), message)); } catch (Exception ignored) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, sapErrorMessage(response.statusCode(), "")); } }
+    static String sapErrorMessage(int statusCode, String message) {
+        String summary = message == null ? "" : message.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (summary.length() > 400) summary = summary.substring(0, 400) + "…";
+        return summary.isBlank() ? "SAP OData 请求失败（HTTP " + statusCode + "）。" : "SAP OData 请求失败（HTTP " + statusCode + "）：" + summary;
+    }
     private List<JsonNode> records(JsonNode payload) { JsonNode v4 = payload.path("value"); if (v4.isArray()) { List<JsonNode> result = new ArrayList<>(); v4.forEach(result::add); return result; } JsonNode v2 = payload.path("d").path("results"); if (v2.isArray()) { List<JsonNode> result = new ArrayList<>(); v2.forEach(result::add); return result; } return List.of(); }
     private String write(JsonNode value) { try { return objectMapper.writeValueAsString(value); } catch (Exception exception) { throw new IllegalStateException("无法生成 SAP 请求体。", exception); } }
     private boolean blank(String value) { return value == null || value.isBlank(); }
