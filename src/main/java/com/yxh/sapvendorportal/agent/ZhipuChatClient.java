@@ -17,6 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class ZhipuChatClient {
@@ -36,7 +39,7 @@ public class ZhipuChatClient {
     public Completion complete(ArrayNode messages, ArrayNode tools) {
         if (!configured()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, configurationIssue());
         ObjectNode request = objectMapper.createObjectNode();
-        request.put("model", properties.getAi().getModel());
+        request.put("model", properties.getAi().getModel().trim().toLowerCase(Locale.ROOT));
         request.set("messages", messages);
         request.set("tools", tools);
         request.put("tool_choice", "auto");
@@ -50,7 +53,7 @@ public class ZhipuChatClient {
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 400) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "智谱 AI 请求失败（HTTP " + response.statusCode() + "）：请检查模型配置或稍后重试。");
+            if (response.statusCode() >= 400) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, describeError(response.statusCode(), response.body()));
             JsonNode message = objectMapper.readTree(response.body()).path("choices").path(0).path("message");
             if (!message.isObject()) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "智谱 AI 未返回可用回答。");
             ObjectNode assistant = objectMapper.createObjectNode();
@@ -70,6 +73,19 @@ public class ZhipuChatClient {
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "无法连接智谱 AI 服务，请检查网络与 ZHIPU_API_KEY。", exception);
         }
+    }
+
+    static String describeError(int statusCode, String responseBody) {
+        Matcher matcher = Pattern.compile("\\\"code\\\"\\s*:\\s*\\\"?(\\d+)").matcher(responseBody == null ? "" : responseBody);
+        String code = matcher.find() ? matcher.group(1) : "";
+        if (statusCode == 429) return switch (code) {
+            case "1302" -> "智谱 AI 请求受到账户或模型速率限制（1302），请稍后重试或在智谱控制台提升并发额度。";
+            case "1304", "1308", "1310", "1113" -> "智谱 AI 账户余额或调用额度不足（" + code + "），请在智谱控制台充值或等待额度恢复。";
+            case "1305" -> "智谱 AI 当前模型访问量过大（1305），请稍后重试或切换可用模型。";
+            case "1311" -> "当前智谱账户没有所选模型权限（1311），请在控制台开通模型权限或更换已授权模型。";
+            default -> "智谱 AI 请求被拒绝（HTTP 429" + (code.isBlank() ? "" : "，业务码 " + code) + "）：请检查账户额度、模型权限和调用频率。";
+        };
+        return "智谱 AI 请求失败（HTTP " + statusCode + (code.isBlank() ? "" : "，业务码 " + code) + "）。";
     }
 
     public record ToolCall(String id, String name, String arguments) { }
