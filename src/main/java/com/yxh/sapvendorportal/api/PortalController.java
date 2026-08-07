@@ -115,6 +115,10 @@ public class PortalController {
     }
     public List<JsonNode> agentPurchaseOrders(String vendorId) { requireConfigured(); return load("purchaseOrders", vendorId, "", 100, List.of()); }
     public List<JsonNode> agentAsns(String vendorId) { requireConfigured(); return load("asns", vendorId, "", 100, List.of()); }
+    /**
+     * 查询收货凭证时仍以物料凭证 OData API 为事实来源；采购订单只用于供应商范围收敛和补全订单行字段。
+     */
+    public List<JsonNode> agentGoodsReceipts(String vendorId) { requireConfigured(); return load("materialDocuments", vendorId, "", 100, List.of()); }
     public List<Map<String, Object>> agentReconciliation(String vendorId) {
         requireConfigured();
         return reconciliationLines(vendorId, 100).stream().filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0).map(ReconciliationLine::view).toList();
@@ -261,9 +265,13 @@ public class PortalController {
                 BigDecimal open = ordered.subtract(received).max(BigDecimal.ZERO);
                 result.put("OpenReceiptQuantity", decimal(open));
                 BigDecimal createdAsnQuantity = firstDecimal(result, "CreatedAsnQuantity");
-                BigDecimal asnAvailableQuantity = result.path("HasAsn").asBoolean(false)
-                        ? ordered.subtract(createdAsnQuantity == null ? BigDecimal.ZERO : createdAsnQuantity).max(BigDecimal.ZERO)
-                        : open;
+                BigDecimal unclearedAsnQuantity = (createdAsnQuantity == null ? BigDecimal.ZERO : createdAsnQuantity)
+                        .subtract(received)
+                        .max(BigDecimal.ZERO);
+                // 可发运量 = 订单数量 - 已收货数量 - 未清 ASN 数量。
+                // 同一订单行上，收货会优先结清已创建的 ASN；因此未清 ASN 以 ASN 累计数量扣除净收货数量计算。
+                BigDecimal asnAvailableQuantity = ordered.subtract(received).subtract(unclearedAsnQuantity).max(BigDecimal.ZERO);
+                result.put("UnclearedAsnQuantity", decimal(unclearedAsnQuantity));
                 result.put("AsnAvailableQuantity", decimal(asnAvailableQuantity));
                 if (result.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
                     if (received.signum() > 0 && received.compareTo(ordered) >= 0) result.put("PurchaseOrderStatus", "已完成");

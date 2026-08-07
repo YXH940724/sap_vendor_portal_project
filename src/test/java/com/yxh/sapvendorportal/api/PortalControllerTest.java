@@ -119,6 +119,39 @@ class PortalControllerTest {
     }
 
     @Test
+    void calculatesAvailableShippingQuantityFromOrderReceiptsAndUnclearedAsns() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\"}"));
+            if ("A_InbDeliveryHeader".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"InbDelivery\":\"1800000001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"ActualDeliveryQuantity\":15}"));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) {
+                return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":20,\"PurchaseOrderQuantityUnit\":\"EA\"}"));
+            }
+            return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10}"));
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        Map<String, Object> response = controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class));
+        @SuppressWarnings("unchecked")
+        List<JsonNode> records = (List<JsonNode>) response.get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("ReceivedQuantity").asText()).isEqualTo("10");
+            assertThat(row.path("CreatedAsnQuantity").asText()).isEqualTo("15");
+            assertThat(row.path("UnclearedAsnQuantity").asText()).isEqualTo("5");
+            assertThat(row.path("AsnAvailableQuantity").asText()).isEqualTo("5");
+        });
+    }
+
+    @Test
     void calculatesRemainingSettlementQuantityFromReceiptAndInvoiceLines() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);

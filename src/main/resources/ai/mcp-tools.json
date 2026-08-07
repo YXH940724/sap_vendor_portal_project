@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "query_purchase_orders",
-      "description": "查询当前供应商的采购订单行、交期、收货和发运可用数量。",
+      "description": "通过 SAP 采购订单 API 查询当前供应商的订单行、交期、订单数量，以及组合计算后的已收货数量、未清 ASN 数量和可发运量。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -18,8 +18,23 @@
   {
     "type": "function",
     "function": {
+      "name": "query_goods_receipts",
+      "description": "通过 SAP 收货凭证 API 查询当前供应商的物料凭证、采购订单、物料、过账日期、移动类型、收货数量和收货状态。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keyword": { "type": "string", "description": "收货凭证、订单号、物料或描述关键字" }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "query_asn_status",
-      "description": "查询当前供应商已创建的 ASN、发运通知及内向交货单状态。",
+      "description": "通过 SAP ASN API 查询当前供应商已创建的 ASN、供应商发运单号、内向交货单、发运数量、计划到货日期和状态。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -34,7 +49,7 @@
     "type": "function",
     "function": {
       "name": "query_settlement_candidates",
-      "description": "查询当前供应商的收货凭证、已结算数量和可结算数量。",
+      "description": "结合 SAP 收货凭证、供应商发票和采购订单 API，查询当前供应商的收货凭证、已结算数量、剩余可结算数量及关联发票。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -50,7 +65,7 @@
     "type": "function",
     "function": {
       "name": "prepare_asn_draft",
-      "description": "根据一个采购订单查询可发运行，生成 ASN 草稿依据，不提交 SAP。",
+      "description": "根据采购订单、ASN 与收货数据计算可发运行，返回具体订单行与创建 ASN 的详细操作指引；只生成草稿依据，不提交 SAP。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -65,7 +80,7 @@
     "type": "function",
     "function": {
       "name": "prepare_invoice_draft",
-      "description": "查询可用于创建 SAP 预制发票的收货结算行，不提交 SAP。",
+      "description": "结合收货凭证、发票与订单数据查询可结算行，返回具体收货凭证与创建 SAP 预制发票的详细操作指引；不提交 SAP。",
       "parameters": {
         "type": "object",
         "properties": {

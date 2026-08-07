@@ -94,6 +94,7 @@ public class SupplierCollaborationAgent {
             JsonNode arguments = objectMapper.readTree(rawArguments);
             return switch (name) {
                 case "query_purchase_orders" -> queryPurchaseOrders(arguments, vendorId);
+                case "query_goods_receipts" -> queryGoodsReceipts(arguments, vendorId);
                 case "query_asn_status" -> queryAsnStatus(arguments, vendorId);
                 case "query_settlement_candidates" -> querySettlement(arguments, vendorId);
                 case "prepare_asn_draft" -> prepareAsnDraft(arguments, vendorId);
@@ -113,7 +114,15 @@ public class SupplierCollaborationAgent {
                 .filter(row -> matches(row, keyword, "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription"))
                 .filter(row -> status.isBlank() || normalized(row.path("PurchaseOrderStatus").asText()).contains(status))
                 .limit(15).map(this::orderView).toList();
-        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 实时采购订单"), "查询到 " + records.size() + " 条采购订单行");
+        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 采购订单 API"), "查询到 " + records.size() + " 条采购订单行" + documentSummary(records, "PurchaseOrder", "PurchaseOrderItem"));
+    }
+
+    private ToolExecution queryGoodsReceipts(JsonNode input, String vendorId) {
+        String keyword = normalized(input.path("keyword").asText());
+        List<Map<String, Object>> records = portal.agentGoodsReceipts(vendorId).stream()
+                .filter(row -> matches(row, keyword, "MaterialDocument", "PurchaseOrder", "Material", "MaterialDescription"))
+                .limit(15).map(this::receiptView).toList();
+        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 收货凭证 API"), "查询到 " + records.size() + " 条收货凭证" + documentSummary(records, "MaterialDocument", "MaterialDocumentItem"));
     }
 
     private ToolExecution queryAsnStatus(JsonNode input, String vendorId) {
@@ -121,7 +130,7 @@ public class SupplierCollaborationAgent {
         List<Map<String, Object>> records = portal.agentAsns(vendorId).stream()
                 .filter(row -> matches(row, keyword, "InbDelivery", "DeliveryDocument", "PurchaseOrder", "Material", "MaterialDescription"))
                 .limit(15).map(row -> compact(row, List.of("InbDelivery", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "OverallStatus", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "DeliveryDocumentBySupplier"))).toList();
-        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 实时 ASN"), "查询到 " + records.size() + " 条 ASN / 发运记录");
+        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP ASN API"), "查询到 " + records.size() + " 条 ASN / 发运记录" + documentSummary(records, "InbDelivery", "PurchaseOrder"));
     }
 
     private ToolExecution querySettlement(JsonNode input, String vendorId) {
@@ -131,7 +140,7 @@ public class SupplierCollaborationAgent {
                 .filter(row -> matches(row, keyword, "materialDocument", "purchaseOrder", "material", "materialDescription"))
                 .filter(row -> status.isBlank() || normalized(String.valueOf(row.get("settlementStatus"))).contains(status))
                 .limit(15).map(this::settlementView).toList();
-        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 实时收货与结算"), "查询到 " + records.size() + " 条收货结算行");
+        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP 收货凭证、发票与采购订单 API 组合计算"), "查询到 " + records.size() + " 条收货结算行" + documentSummary(records, "materialDocument", "purchaseOrder"));
     }
 
     private ToolExecution prepareAsnDraft(JsonNode input, String vendorId) {
@@ -141,8 +150,16 @@ public class SupplierCollaborationAgent {
                 .filter(row -> purchaseOrder.equals(normalized(row.path("PurchaseOrder").asText())))
                 .filter(row -> decimal(row.path("AsnAvailableQuantity").asText()) > 0)
                 .limit(20).map(this::orderView).toList();
-        if (lines.isEmpty()) return new ToolExecution(Map.of("purchaseOrder", purchaseOrder, "records", List.of(), "warning", "未找到可发运订单行；请核对订单归属、已创建 ASN 或收货数量。"), "该订单暂无可发运行");
-        return new ToolExecution(Map.of("purchaseOrder", purchaseOrder, "records", lines, "nextStep", "请进入采购订单页，选择对应订单行后创建 ASN；Portal 将在提交前二次校验。"), "已生成 " + lines.size() + " 行 ASN 草稿依据");
+        if (lines.isEmpty()) return new ToolExecution(Map.of("purchaseOrder", purchaseOrder, "records", List.of(), "warning", "未找到可发运订单行；请核对订单归属、已收货数量及未清 ASN 数量。"), "该订单暂无可发运行");
+        return new ToolExecution(Map.of(
+                "purchaseOrder", purchaseOrder,
+                "records", lines,
+                "nextSteps", List.of(
+                        "进入“采购订单”页面，以采购订单 " + purchaseOrder + " 筛选对应订单行。",
+                        "核对物料、工厂、交期、订单数量、已收货数量、未清 ASN 数量和可发运量；只勾选本次实际发运的行。",
+                        "点击“基于已选行创建 ASN”，填写或核对供应商发运单号、计划到货日期、运输参考号和每行发运数量；数量不得超过可发运量。",
+                        "提交前再次确认订单行、物料和数量。Portal 会以 SAP 实时订单、ASN 与收货数据重新校验，并在通过 CSRF 与实体可创建性校验后创建 SAP 内向交货单。"
+                )), "已生成 " + lines.size() + " 行 ASN 草稿依据" + documentSummary(lines, "PurchaseOrder", "PurchaseOrderItem"));
     }
 
     private ToolExecution prepareInvoiceDraft(JsonNode input, String vendorId) {
@@ -152,11 +169,23 @@ public class SupplierCollaborationAgent {
                 .filter(row -> purchaseOrder.isBlank() || purchaseOrder.equals(normalized(String.valueOf(row.get("purchaseOrder")))))
                 .filter(row -> decimal(String.valueOf(row.get("remainingQuantity"))) > 0)
                 .limit(20).map(this::settlementView).toList();
-        return new ToolExecution(Map.of("purchaseOrder", purchaseOrder, "records", records, "nextStep", "请进入结算对账页，选择收货行后创建预制发票；Portal 会校验数量、金额、税额和税务确定日期。"), "查询到 " + records.size() + " 条可用于预制发票草稿的收货行");
+        return new ToolExecution(Map.of(
+                "purchaseOrder", purchaseOrder,
+                "records", records,
+                "nextSteps", List.of(
+                        "进入“结算对账”页面，按采购订单或收货凭证筛选“可结算”行，并确认收货凭证、采购订单、物料、已结算数量与剩余可结算数量。",
+                        "勾选同一公司代码和币种下需要本次结算的收货行；逐行填写本次结算数量，不能超过 SAP 实时剩余可结算数量。",
+                        "点击“基于已选行创建发票”，填写供应商发票号、凭证日期、过账日期、税务确定日期、抬头不含税金额和税额。",
+                        "确认含税金额等于不含税金额加税额。Portal 会按 SAP 订单净价分摊行金额，并在提交时重新校验收货、发票、订单、数量、金额、税码、币种和公司代码后创建 SAP 预制发票。"
+                )), "查询到 " + records.size() + " 条可用于预制发票草稿的收货行" + documentSummary(records, "materialDocument", "purchaseOrder"));
     }
 
     private Map<String, Object> orderView(JsonNode row) {
-        return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
+        return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "CreatedAsnQuantity", "UnclearedAsnQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
+    }
+
+    private Map<String, Object> receiptView(JsonNode row) {
+        return compact(row, List.of("MaterialDocument", "MaterialDocumentYear", "MaterialDocumentItem", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "PostingDate", "GoodsMovementType", "QuantityInEntryUnit", "EntryUnit", "ReceiptStatus"));
     }
 
     private Map<String, Object> settlementView(Map<String, Object> row) {
@@ -183,6 +212,16 @@ public class SupplierCollaborationAgent {
         return false;
     }
 
+    private String documentSummary(Collection<Map<String, Object>> records, String primaryField, String secondaryField) {
+        String documents = records.stream().limit(3).map(record -> {
+            String primary = String.valueOf(record.getOrDefault(primaryField, "")).trim();
+            String secondary = String.valueOf(record.getOrDefault(secondaryField, "")).trim();
+            if (primary.isBlank()) return "";
+            return secondary.isBlank() ? primary : primary + "/" + secondary;
+        }).filter(value -> !value.isBlank()).reduce((left, right) -> left + "、" + right).orElse("");
+        return documents.isBlank() ? "" : "；涉及单据 " + documents;
+    }
+
     private ArrayNode toolDefinitions() {
         return definitions.toolDefinitions();
     }
@@ -190,6 +229,7 @@ public class SupplierCollaborationAgent {
     private String displayToolName(String name) {
         return switch (name) {
             case "query_purchase_orders" -> "采购订单查询";
+            case "query_goods_receipts" -> "收货凭证查询";
             case "query_asn_status" -> "ASN / 发运查询";
             case "query_settlement_candidates" -> "收货结算查询";
             case "prepare_asn_draft" -> "ASN 草稿校验";
