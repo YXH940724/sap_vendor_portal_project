@@ -38,6 +38,16 @@
 .reconciliation-table td:nth-child(12) .table-link { min-width: 72px; padding: 5px 7px; border-radius: 5px; background: #edf7ff; }
 .reconciliation-table td:nth-child(12) .table-link:hover { background: #dcefff; }
 
+/* 订单类型以可扫读标签标识；外协组件与按公司结算资料使用清晰的业务清单。 */
+.order-type { display: inline-flex; margin: 2px 4px 2px 0; padding: 3px 6px; border-radius: 4px; color: #315779; background: #edf4fb; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.order-type:first-child { color: #79581c; background: #fff7df; }
+.action-hint { display: inline-block; margin-top: 5px; color: #8a5b10; font-size: 11px; line-height: 1.35; }
+.component-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.component-list li { display: grid; grid-template-columns: minmax(110px,.7fr) minmax(120px,1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; border-left: 3px solid #64a8d8; border-radius: 0 6px 6px 0; background: #f4f9fd; }
+.component-list b { color: #19476f; font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; }.component-list span,.component-list small { color: #557089; font-size: 12px; }.component-list small { white-space: nowrap; }
+.settlement-company-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 12px; }.settlement-company { padding: 14px; border: 1px solid #dbe7f2; border-radius: 8px; background: linear-gradient(145deg,#f7fbff,#fff); }.settlement-company>b { display: block; margin-bottom: 10px; color: #164c77; font-size: 14px; }.settlement-company dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }.settlement-company dl div { min-height: 48px; padding: 7px 0; border-top: 1px solid #e8f0f7; }.settlement-company dt { color: #718397; font-size: 11px; }.settlement-company dd { margin: 3px 0 0; color: #293d50; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 768px) { .component-list li { grid-template-columns: 1fr; gap: 3px; }.settlement-company dl { grid-template-columns: 1fr; } }
+
 /* AI 助手是可移动的浮动工具：单击打开，拖动避让，减号缩成不遮挡操作的圆形图标。 */
 .ai-float { position: fixed; z-index: 42; right: 28px; bottom: 26px; display: grid; grid-template-areas: "move compact" "launcher launcher"; grid-template-columns: auto auto; justify-items: end; gap: 5px; }
 .ai-float .ai-launcher { position: static; right: auto; bottom: auto; grid-area: launcher; }

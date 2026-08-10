@@ -148,6 +148,8 @@ public class SupplierCollaborationAgent {
         if (purchaseOrder.isBlank()) return new ToolExecution(Map.of("error", "请先提供采购订单号。"), "缺少采购订单号，无法生成 ASN 草稿");
         List<Map<String, Object>> lines = portal.agentPurchaseOrders(vendorId).stream()
                 .filter(row -> purchaseOrder.equals(normalized(row.path("PurchaseOrder").asText())))
+                .filter(row -> !booleanValue(row, "IsReturnsItem", "ReturnsItem", "ReturnsIndicator"))
+                .filter(row -> !booleanValue(row, "IsCompletelyDelivered"))
                 .filter(row -> decimal(row.path("AsnAvailableQuantity").asText()) > 0)
                 .limit(20).map(this::orderView).toList();
         if (lines.isEmpty()) return new ToolExecution(Map.of("purchaseOrder", purchaseOrder, "records", List.of(), "warning", "未找到可发运订单行；请核对订单归属、已收货数量及未清 ASN 数量。"), "该订单暂无可发运行");
@@ -181,7 +183,7 @@ public class SupplierCollaborationAgent {
     }
 
     private Map<String, Object> orderView(JsonNode row) {
-        return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "CreatedAsnQuantity", "UnclearedAsnQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
+        return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "OrderType", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "IsCompletelyDelivered", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "CreatedAsnQuantity", "UnclearedAsnQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
     }
 
     private Map<String, Object> receiptView(JsonNode row) {
@@ -239,6 +241,7 @@ public class SupplierCollaborationAgent {
     }
 
     private String normalized(String value) { return value == null ? "" : value.trim().toLowerCase(Locale.ROOT); }
+    private boolean booleanValue(JsonNode row, String... fields) { for (String field : fields) { JsonNode value = row.path(field); if (value.asBoolean(false) || "X".equalsIgnoreCase(value.asText()) || "true".equalsIgnoreCase(value.asText())) return true; } return false; }
     private String safeText(String value, int max) { String text = value == null ? "" : value.trim(); return text.length() > max ? text.substring(0, max) : text; }
     private int decimal(String value) { try { return new java.math.BigDecimal(value).signum(); } catch (Exception ignored) { return 0; } }
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception exception) { return "{\"error\":\"工具结果序列化失败\"}"; } }

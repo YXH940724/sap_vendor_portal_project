@@ -143,6 +143,7 @@ public class PortalController {
         Resource resource = resources.get(resourceName);
         if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
         if ("purchaseOrders".equals(resourceName)) return loadPurchaseOrders(vendorId, top);
+        if ("suppliers".equals(resourceName)) return loadSupplierProfile(vendorId, search, top);
         PortalProperties.Service target = service(resource.serviceName());
         if ("asns".equals(resourceName)) {
             List<JsonNode> asns = recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
@@ -181,8 +182,27 @@ public class PortalController {
         PortalProperties.Service itemService = new PortalProperties.Service();
         itemService.setUrl(properties.getSap().getPurchaseOrder().getUrl());
         itemService.setEntity("PurchaseOrderItem");
-        itemService.setExpand("_PurchaseOrderScheduleLineTP");
+        itemService.setExpand("_PurchaseOrderScheduleLineTP,_PurOrdItemComponent");
         return itemService;
+    }
+    private List<JsonNode> loadSupplierProfile(String vendorId, String search, int top) {
+        PortalProperties.Service businessPartner = service("businessPartner");
+        List<JsonNode> partners = recordMapper.map("suppliers", sapClient.get(businessPartner, vendorId, search, "BusinessPartner", "BusinessPartner asc", top));
+        PortalProperties.Service supplierCompany = new PortalProperties.Service();
+        supplierCompany.setUrl(businessPartner.getUrl()); supplierCompany.setEntity("A_SupplierCompany"); supplierCompany.setSupplierField("Supplier");
+        List<JsonNode> companies = recordMapper.map("supplierCompanies", sapClient.get(supplierCompany, vendorId, "", "Supplier", "CompanyCode asc", top));
+        Map<String, ArrayNode> companiesBySupplier = new LinkedHashMap<>();
+        for (JsonNode company : companies) {
+            String supplier = firstText(company, "Supplier", "BusinessPartner");
+            if (!supplier.isBlank()) companiesBySupplier.computeIfAbsent(supplier, ignored -> JsonNodeFactory.instance.arrayNode()).add(company);
+        }
+        return partners.stream().map(partner -> {
+            if (!partner.isObject()) return partner;
+            ObjectNode result = ((ObjectNode) partner).deepCopy();
+            ArrayNode supplierCompanies = companiesBySupplier.get(firstText(result, "Supplier", "BusinessPartner"));
+            if (supplierCompanies != null) result.set("SupplierCompanies", supplierCompanies.deepCopy());
+            return result;
+        }).toList();
     }
     private JsonNode enrichPurchaseOrderItem(JsonNode item, JsonNode header) {
         if (header == null || !item.isObject()) return item;
@@ -203,7 +223,7 @@ public class PortalController {
     private JsonNode enrichWithPurchaseOrderItem(JsonNode record, JsonNode orderLine) {
         if (orderLine == null || !record.isObject()) return record;
         ObjectNode result = ((ObjectNode) record).deepCopy();
-        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery")) {
+        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "ReturnsItem", "ReturnsIndicator", "IsCompletelyDelivered", "OrderType")) {
             JsonNode source = orderLine.path(field);
             if ((!result.has(field) || result.path(field).asText().isBlank()) && !source.isMissingNode() && !source.isNull() && !source.asText().isBlank()) result.set(field, source);
         }
@@ -262,7 +282,8 @@ public class PortalController {
             BigDecimal ordered = firstDecimal(line, "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
             result.put("ReceivedQuantity", decimal(received));
             if (ordered != null) {
-                BigDecimal open = ordered.subtract(received).max(BigDecimal.ZERO);
+                boolean completelyDelivered = isCompletelyDelivered(line);
+                BigDecimal open = completelyDelivered ? BigDecimal.ZERO : ordered.subtract(received).max(BigDecimal.ZERO);
                 result.put("OpenReceiptQuantity", decimal(open));
                 BigDecimal createdAsnQuantity = firstDecimal(result, "CreatedAsnQuantity");
                 BigDecimal unclearedAsnQuantity = (createdAsnQuantity == null ? BigDecimal.ZERO : createdAsnQuantity)
@@ -270,10 +291,11 @@ public class PortalController {
                         .max(BigDecimal.ZERO);
                 // 可发运量 = 订单数量 - 已收货数量 - 未清 ASN 数量。
                 // 同一订单行上，收货会优先结清已创建的 ASN；因此未清 ASN 以 ASN 累计数量扣除净收货数量计算。
-                BigDecimal asnAvailableQuantity = ordered.subtract(received).subtract(unclearedAsnQuantity).max(BigDecimal.ZERO);
+                BigDecimal asnAvailableQuantity = completelyDelivered ? BigDecimal.ZERO : ordered.subtract(received).subtract(unclearedAsnQuantity).max(BigDecimal.ZERO);
                 result.put("UnclearedAsnQuantity", decimal(unclearedAsnQuantity));
                 result.put("AsnAvailableQuantity", decimal(asnAvailableQuantity));
-                if (result.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
+                if (completelyDelivered) result.put("PurchaseOrderStatus", "已完成");
+                else if (result.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
                     if (received.signum() > 0 && received.compareTo(ordered) >= 0) result.put("PurchaseOrderStatus", "已完成");
                     else if (received.signum() > 0) result.put("PurchaseOrderStatus", "部分收货");
                 }
@@ -338,7 +360,7 @@ public class PortalController {
                 firstText(receipt, "Material"), firstText(receipt, "MaterialDescription"), firstText(receipt, "PostingDate"),
                 firstText(receipt, "GoodsMovementType"), entryUnit, purchaseOrderUnit, firstText(receipt, "CompanyCode"),
                 firstText(receipt, "DocumentCurrency"), firstText(receipt, "TaxCode"), firstDecimal(receipt, "NetPriceAmount"),
-                firstDecimal(receipt, "NetPriceQuantity"), quantity, BigDecimal.ZERO, BigDecimal.ZERO, "", unitConsistent);
+                firstDecimal(receipt, "NetPriceQuantity"), quantity, BigDecimal.ZERO, BigDecimal.ZERO, "", unitConsistent, isFreePurchaseOrder(receipt));
     }
     private void applySettlementReversals(Map<String, ReconciliationLine> linesByReceipt) {
         Map<String, List<ReconciliationLine>> linesByOrderLine = new LinkedHashMap<>();
@@ -479,6 +501,9 @@ public class PortalController {
         }
         return false;
     }
+    private boolean isFreePurchaseOrder(JsonNode line) { return booleanField(line, "PurchasingItemIsFreeOfCharge"); }
+    private boolean isCompletelyDelivered(JsonNode line) { return booleanField(line, "IsCompletelyDelivered"); }
+    private boolean booleanField(JsonNode record, String... fields) { for (String field : fields) { JsonNode value = record.path(field); if (value.asBoolean(false) || "X".equalsIgnoreCase(value.asText()) || "true".equalsIgnoreCase(value.asText())) return true; } return false; }
     private LoadResult safelyLoad(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         try { return new LoadResult(load(resourceName, vendorId, search, top, purchaseOrders), ""); }
         catch (ResponseStatusException exception) { return new LoadResult(List.of(), exception.getReason() == null ? "SAP 数据读取失败。" : exception.getReason()); }
@@ -507,6 +532,18 @@ public class PortalController {
         List<JsonNode> orderLines = loadPurchaseOrders(vendorId, 100);
         List<String> allowed = purchaseOrderIds(orderLines);
         if (!allowed.containsAll(requested)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选采购订单不属于当前供应商，已拒绝创建 ASN。");
+        Map<String, JsonNode> orderLinesByKey = new LinkedHashMap<>();
+        orderLines.forEach(line -> orderLinesByKey.put(purchaseOrderLineKey(line), line));
+        input.path("items").forEach(item -> {
+            String requestedLineKey = item.path("sourcePurchaseOrder").asText().trim() + ":" + canonicalItemNumber(item.path("sourcePurchaseOrderItem").asText());
+            JsonNode source = orderLinesByKey.get(requestedLineKey);
+            if (source == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "所选订单行不属于当前供应商，已拒绝创建 ASN。");
+            if (isReturnPurchaseOrder(source)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "退货订单行不能创建 ASN。");
+            if (isCompletelyDelivered(source)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "订单行已标记完全交付，不能创建 ASN。");
+            BigDecimal available = firstDecimal(source, "AsnAvailableQuantity");
+            BigDecimal requestedQuantity = firstDecimal(item, "quantity");
+            if (available != null && requestedQuantity != null && requestedQuantity.compareTo(available) > 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ASN 发运数量超过订单行实时可发运量 " + decimal(available) + "。");
+        });
     }
     private String portalAsnNumber(JsonNode input) {
         String supplied = input.path("portalAsnNumber").asText().trim();
@@ -517,20 +554,20 @@ public class PortalController {
         return "PASN-" + PORTAL_ASN_TIME.format(Instant.now()) + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
-    private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent) {
-        ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent); }
-        ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, actualReturnQuantity, settlementInvoices, unitConsistent); }
-        ReconciliationLine withActualReturnQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, value, settlementInvoices, unitConsistent); }
-        ReconciliationLine withSettlementInvoices(String value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, actualReturnQuantity, value, unitConsistent); }
+    private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent, boolean freeOfCharge) {
+        ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }
+        ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }
+        ReconciliationLine withActualReturnQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, value, settlementInvoices, unitConsistent, freeOfCharge); }
+        ReconciliationLine withSettlementInvoices(String value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, settledQuantity, actualReturnQuantity, value, unitConsistent, freeOfCharge); }
         String purchaseOrderLineKey() { return purchaseOrder + ":" + canonicalItemNumber(purchaseOrderItem); }
-        boolean canSettle() { return receivedQuantity.signum() > 0 && unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
-        boolean isSettlementCandidate() { return unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
+        boolean canSettle() { return !freeOfCharge && receivedQuantity.signum() > 0 && unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
+        boolean isSettlementCandidate() { return !freeOfCharge && unitConsistent && SETTLEMENT_RECEIPT_MOVEMENT_TYPES.contains(goodsMovementType); }
         BigDecimal expectedInvoiceNetAmount(BigDecimal quantity) {
             if (netPriceAmount == null || netPriceQuantity == null || netPriceQuantity.signum() <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "收货来源缺少 SAP 净价或价格单位，不能校验发票金额。");
             return quantity.multiply(netPriceAmount).divide(netPriceQuantity, 2, RoundingMode.HALF_UP);
         }
         BigDecimal remainingQuantity() { return canSettle() ? receivedQuantity.subtract(settledQuantity).max(BigDecimal.ZERO) : BigDecimal.ZERO; }
-        String settlementStatus() { if (RETURN_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货"; if (RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货冲销"; if ("102".equals(goodsMovementType)) return "收货冲销"; if ("122".equals(goodsMovementType)) return "部分冲销"; if ("123".equals(goodsMovementType)) return "部分冲销冲销"; if (!unitConsistent) return "单位不一致"; return remainingQuantity().signum() > 0 ? "可结算" : "已结算"; }
+        String settlementStatus() { if (freeOfCharge) return "免费订单（无需结算）"; if (RETURN_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货"; if (RETURN_REVERSAL_MOVEMENT_TYPES.contains(goodsMovementType)) return "退货冲销"; if ("102".equals(goodsMovementType)) return "收货冲销"; if ("122".equals(goodsMovementType)) return "部分冲销"; if ("123".equals(goodsMovementType)) return "部分冲销冲销"; if (!unitConsistent) return "单位不一致"; return remainingQuantity().signum() > 0 ? "可结算" : "已结算"; }
         Map<String, Object> view() {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("receiptKey", receiptKey); result.put("purchaseOrder", purchaseOrder); result.put("purchaseOrderItem", purchaseOrderItem); result.put("materialDocument", materialDocument); result.put("materialDocumentYear", materialDocumentYear); result.put("materialDocumentItem", materialDocumentItem); result.put("material", material); result.put("materialDescription", materialDescription); result.put("postingDate", postingDate); result.put("goodsMovementType", goodsMovementType); result.put("unit", entryUnit); result.put("purchaseOrderUnit", purchaseOrderUnit); result.put("companyCode", companyCode); result.put("documentCurrency", documentCurrency); result.put("taxCode", taxCode); result.put("netPriceAmount", decimal(netPriceAmount)); result.put("netPriceQuantity", decimal(netPriceQuantity)); result.put("receivedQuantity", decimal(receivedQuantity)); result.put("settledQuantity", decimal(settledQuantity)); result.put("actualReturnQuantity", decimal(actualReturnQuantity)); result.put("remainingQuantity", decimal(remainingQuantity())); result.put("settlementInvoices", settlementInvoices); result.put("settlementStatus", settlementStatus()); return result;

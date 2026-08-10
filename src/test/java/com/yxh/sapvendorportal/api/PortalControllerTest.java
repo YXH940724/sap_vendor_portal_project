@@ -58,6 +58,101 @@ class PortalControllerTest {
     }
 
     @Test
+    void treatsCompletelyDeliveredOrderAsHavingNoOpenDeliveryOrAvailableShippingQuantity() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            return "PurchaseOrder".equals(service.getEntity()) ? List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001010\"}")) : List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001010\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":20,\"StillToBeDeliveredQuantity\":12,\"IsCompletelyDelivered\":true}"));
+            return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000010\",\"PurchaseOrder\":\"4500001010\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":8}"));
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("已完成");
+            assertThat(row.path("OpenReceiptQuantity").asText()).isEqualTo("0");
+            assertThat(row.path("AsnAvailableQuantity").asText()).isEqualTo("0");
+        });
+    }
+
+    @Test
+    void rejectsAsnForReturnOrderLine() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            return "PurchaseOrder".equals(service.getEntity()) ? List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001011\"}")) : List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001011\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":5,\"IsReturnsItem\":true}"));
+            return List.of();
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        assertThatThrownBy(() -> controller.createAsn(objectMapper.readTree("{\"items\":[{\"sourcePurchaseOrder\":\"4500001011\",\"sourcePurchaseOrderItem\":\"00010\",\"quantity\":1}]}"), mock(HttpServletRequest.class)))
+                .isInstanceOf(ResponseStatusException.class).satisfies(error -> assertThat(((ResponseStatusException) error).getReason()).contains("退货订单行不能创建 ASN"));
+    }
+
+    @Test
+    void addsSettlementDetailsFromSupplierCompanyApiToSupplierProfile() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\"}"));
+            if ("A_SupplierCompany".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"Supplier\":\"133000006\",\"CompanyCode\":\"1000\",\"PaymentCurrency\":\"CNY\",\"PaymentTerms\":\"0001\",\"PaymentMethodsList\":\"T\"}"));
+            return List.of();
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("suppliers", "", 30, mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            var company = row.path("SupplierCompanies").get(0);
+            assertThat(company.path("CompanyCode").asText()).isEqualTo("1000");
+            assertThat(company.path("SettlementCurrency").asText()).isEqualTo("CNY");
+            assertThat(company.path("PaymentTerms").asText()).isEqualTo("0001");
+            assertThat(company.path("PaymentMethod").asText()).isEqualTo("T");
+        });
+    }
+
+    @Test
+    void excludesFreeOfChargeOrderReceiptsFromReconciliation() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001012\",\"CompanyCode\":\"1000\",\"DocumentCurrency\":\"CNY\"}"));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001012\",\"PurchaseOrderItem\":\"00010\",\"PurchasingItemIsFreeOfCharge\":true,\"PurchaseOrderQuantityUnit\":\"EA\"}"));
+            return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000012\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001012\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":5,\"EntryUnit\":\"EA\"}"));
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<Map<String, Object>> records = (List<Map<String, Object>>) controller.reconciliation(mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).isEmpty();
+    }
+
+    @Test
     void fillsReceiptMaterialDescriptionFromMatchingPurchaseOrderLineWithDifferentItemPadding() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);

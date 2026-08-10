@@ -133,6 +133,24 @@ class ODataRecordMapperTest {
     }
 
     @Test
+    void derivesBusinessOrderTypesAndNormalizesSubcontractingComponents() throws Exception {
+        var item = objectMapper.readTree("""
+                {"PurchaseOrder":"4500005681","PurchaseOrderItem":"00040","PurchasingItemIsFreeOfCharge":true,
+                 "PurchaseOrderItemCategory":"3","IsReturnsItem":true,"IsCompletelyDelivered":true,
+                 "_PurOrdItemComponent":{"value":[{"ComponentMaterial":"COMP-01","ComponentDescription":"外协组件","RequiredQuantity":4,"ComponentUnit":"EA","Plant":"1710"}]}}
+                """);
+
+        var row = mapper.map("purchaseOrders", List.of(item)).getFirst();
+
+        assertThat(row.path("OrderType").asText()).isEqualTo("免费订单 · 外协订单 · 退货订单 · 已完成订单");
+        assertThat(row.path("SubcontractingComponents")).singleElement().satisfies(component -> {
+            assertThat(component.path("material").asText()).isEqualTo("COMP-01");
+            assertThat(component.path("quantity").asText()).isEqualTo("4");
+            assertThat(component.path("unit").asText()).isEqualTo("EA");
+        });
+    }
+
+    @Test
     void normalizesInboundDeliveryStandardHeaderFields() throws Exception {
         var delivery = objectMapper.readTree("""
                 {"DeliveryDocument":"180000001","DeliveryDate":"2026-08-08","OverallGoodsMovementStatus":"C"}

@@ -76,6 +76,8 @@ public class ODataRecordMapper {
                 alias(row, "DeliveryDate", "ScheduleLineDeliveryDate", "DeliveryDate", "RequestedDeliveryDate", "ConfirmedDeliveryDate", "StatDeliveryDate");
                 derivePurchaseOrderStatus(row);
                 alias(row, "PurchaseOrderStatus", "PurchaseOrderItemStatus", "PurchaseOrderStatus", "PurchasingDocumentStatus", "OverallStatus", "LifecycleStatus", "Status");
+                deriveOrderType(row);
+                normalizeSubcontractingComponents(row);
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
@@ -128,6 +130,14 @@ public class ODataRecordMapper {
                 alias(row, "ContactName", "ContactPerson", "ContactPersonFullName", "PersonFullName", "CareOfName");
                 alias(row, "ContactDepartment", "Department", "ContactDepartment");
             }
+            case "supplierCompanies" -> {
+                alias(row, "Supplier", "Supplier", "BusinessPartner");
+                alias(row, "SettlementCurrency", "PaymentCurrency", "PaymentCurrencyCode", "CompanyCodeCurrency", "DocumentCurrency");
+                alias(row, "PaymentMethod", "PaymentMethod", "PaymentMethodsList");
+                alias(row, "PaymentTerms", "PaymentTerms", "PaymentTermsCode");
+                alias(row, "SettlementCompany", "CompanyName", "CompanyCode");
+                alias(row, "SupplierPaymentIsBlocked", "SupplierPaymentIsBlocked", "PaymentIsBlockedForSupplier", "PaymentIsBlocked");
+            }
             default -> { }
         }
         return row;
@@ -154,6 +164,7 @@ public class ODataRecordMapper {
         return null;
     }
     private void copyIfMissing(ObjectNode target, JsonNode source, String... names) { for (String name : names) if (!target.has(name) && source.has(name)) target.set(name, source.get(name)); }
+    private void copyFirst(ObjectNode target, JsonNode source, String targetName, String... candidates) { for (String candidate : candidates) if (source.hasNonNull(candidate) && !source.path(candidate).asText().isBlank()) { target.set(targetName, source.get(candidate)); return; } }
     private void alias(ObjectNode row, String target, String... candidates) { if (row.hasNonNull(target) && !row.path(target).asText().isBlank()) return; for (String candidate : candidates) if (row.hasNonNull(candidate) && !row.path(candidate).asText().isBlank()) { row.set(target, row.get(candidate)); return; } }
     private void derivePurchaseOrderStatus(ObjectNode row) {
         if (!row.path("PurchasingDocumentDeletionCode").asText().isBlank()) {
@@ -189,6 +200,30 @@ public class ODataRecordMapper {
         };
         row.put("ReceiptStatus", status);
     }
+    private void deriveOrderType(ObjectNode row) {
+        List<String> types = new ArrayList<>();
+        if (booleanValue(row, "PurchasingItemIsFreeOfCharge")) types.add("免费订单");
+        if ("3".equals(row.path("PurchaseOrderItemCategory").asText().trim())) types.add("外协订单");
+        if (booleanValue(row, "IsReturnsItem", "ReturnsItem", "ReturnsIndicator")) types.add("退货订单");
+        if (booleanValue(row, "IsCompletelyDelivered")) types.add("已完成订单");
+        row.put("OrderType", types.isEmpty() ? "标准订单" : String.join(" · ", types));
+    }
+    private void normalizeSubcontractingComponents(ObjectNode row) {
+        JsonNode components = firstArray(row, "_PurOrdItemComponent", "to_PurOrdItemComponent", "_PurchaseOrderItemComponent", "to_PurchaseOrderItemComponent");
+        if (components == null || components.isEmpty()) return;
+        var normalized = objectMapper.createArrayNode();
+        for (JsonNode component : components) {
+            if (!component.isObject()) continue;
+            ObjectNode item = objectMapper.createObjectNode();
+            copyFirst(item, component, "material", "Material", "ComponentMaterial", "ReservationItem");
+            copyFirst(item, component, "description", "MaterialDescription", "ComponentDescription", "PurchaseOrderItemText", "ItemText");
+            copyFirst(item, component, "quantity", "RequiredQuantity", "ComponentQuantity", "Quantity", "EntryQuantity");
+            copyFirst(item, component, "unit", "PurchaseOrderQuantityUnit", "ComponentUnit", "QuantityUnit", "EntryUnit", "UnitOfMeasure");
+            copyFirst(item, component, "plant", "Plant", "ProductionPlant");
+            normalized.add(item);
+        }
+        if (!normalized.isEmpty()) row.set("SubcontractingComponents", normalized);
+    }
     private BigDecimal firstDecimal(ObjectNode row, String... names) {
         for (String name : names) {
             JsonNode value = row.path(name);
@@ -199,4 +234,5 @@ public class ODataRecordMapper {
         }
         return null;
     }
+    private boolean booleanValue(ObjectNode row, String... names) { for (String name : names) { JsonNode value = row.path(name); if (value.asBoolean(false) || "X".equalsIgnoreCase(value.asText()) || "true".equalsIgnoreCase(value.asText())) return true; } return false; }
 }
