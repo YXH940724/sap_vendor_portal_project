@@ -182,7 +182,8 @@ public class PortalController {
         PortalProperties.Service itemService = new PortalProperties.Service();
         itemService.setUrl(properties.getSap().getPurchaseOrder().getUrl());
         itemService.setEntity("PurchaseOrderItem");
-        itemService.setExpand("_PurchaseOrderScheduleLineTP,_PurOrdItemComponent");
+        // 当前租户的 PurchaseOrderItem $metadata 不提供外协组件导航；只展开已确认可用的交期导航，避免整个订单查询返回 HTTP 400。
+        itemService.setExpand("_PurchaseOrderScheduleLineTP");
         return itemService;
     }
     private List<JsonNode> loadSupplierProfile(String vendorId, String search, int top) {
