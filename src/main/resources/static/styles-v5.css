@@ -40,12 +40,13 @@
 
 /* AI 助手是可移动的浮动工具：单击打开，拖动避让，减号缩成不遮挡操作的圆形图标。 */
 .ai-float { position: fixed; z-index: 42; right: 28px; bottom: 26px; display: flex; align-items: flex-start; gap: 4px; }
-.ai-float .ai-launcher { position: static; right: auto; bottom: auto; cursor: grab; touch-action: none; }
-.ai-float .ai-launcher:active { cursor: grabbing; }
-.ai-float-compact { width: 20px; height: 20px; padding: 0; border: 1px solid #a7c4e5; border-radius: 50%; color: #2b5f95; background: #f8fbff; font-size: 15px; line-height: 1; }
-.ai-float-compact:hover { color: #fff; background: #286eca; }
+.ai-float .ai-launcher { position: static; right: auto; bottom: auto; }
+.ai-float-move, .ai-float-compact { width: 20px; height: 20px; padding: 0; border: 1px solid #a7c4e5; border-radius: 50%; color: #2b5f95; background: #f8fbff; font-size: 15px; line-height: 1; }
+.ai-float-move { cursor: grab; touch-action: none; font-size: 13px; }
+.ai-float-move:active { cursor: grabbing; }
+.ai-float-move:hover, .ai-float-compact:hover { color: #fff; background: #286eca; }
 .ai-float.compact { gap: 3px; }
 .ai-float.compact .ai-launcher { padding: 6px; border-radius: 12px; }
 .ai-float.compact .ai-launcher > span:last-child { display: none; }
 .ai-float.compact .ai-launcher-mark { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
-@media (max-width: 768px) { .ai-float { right: 16px; bottom: 16px; }.ai-float .ai-launcher { padding: 8px; } .ai-float-compact { display: none; } }
+@media (max-width: 768px) { .ai-float { right: 16px; bottom: 16px; }.ai-float .ai-launcher { padding: 8px; } .ai-float-move, .ai-float-compact { display: none; } }
