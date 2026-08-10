@@ -28,3 +28,24 @@
 /* 供应商档案按注册、联系人与银行资料分区；账户标识由前端掩码后展示。 */
 .supplier-profile > section + section { border-top: 1px solid #edf2f7; }
 .supplier-profile > section:nth-of-type(4) { background: linear-gradient(90deg, #fbfdff, #f7fbff); }
+
+/* 结算对账使用更宽的账簿画布，关键日期、状态与操作列保持完整可读。 */
+.reconciliation-table { min-width: 1480px; }
+.reconciliation-table th:nth-child(5), .reconciliation-table td:nth-child(5) { min-width: 112px; white-space: nowrap; }
+.reconciliation-table th:nth-child(10), .reconciliation-table td:nth-child(10) { min-width: 72px; text-align: center; white-space: nowrap; }
+.reconciliation-table th:nth-child(11), .reconciliation-table td:nth-child(11) { min-width: 96px; text-align: center; white-space: nowrap; }
+.reconciliation-table th:nth-child(12), .reconciliation-table td:nth-child(12) { min-width: 100px; text-align: center; white-space: nowrap; }
+.reconciliation-table td:nth-child(12) .table-link { min-width: 72px; padding: 5px 7px; border-radius: 5px; background: #edf7ff; }
+.reconciliation-table td:nth-child(12) .table-link:hover { background: #dcefff; }
+
+/* AI 助手是可移动的浮动工具：单击打开，拖动避让，减号缩成不遮挡操作的圆形图标。 */
+.ai-float { position: fixed; z-index: 42; right: 28px; bottom: 26px; display: flex; align-items: flex-start; gap: 4px; }
+.ai-float .ai-launcher { position: static; right: auto; bottom: auto; cursor: grab; touch-action: none; }
+.ai-float .ai-launcher:active { cursor: grabbing; }
+.ai-float-compact { width: 20px; height: 20px; padding: 0; border: 1px solid #a7c4e5; border-radius: 50%; color: #2b5f95; background: #f8fbff; font-size: 15px; line-height: 1; }
+.ai-float-compact:hover { color: #fff; background: #286eca; }
+.ai-float.compact { gap: 3px; }
+.ai-float.compact .ai-launcher { padding: 6px; border-radius: 12px; }
+.ai-float.compact .ai-launcher > span:last-child { display: none; }
+.ai-float.compact .ai-launcher-mark { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
+@media (max-width: 768px) { .ai-float { right: 16px; bottom: 16px; }.ai-float .ai-launcher { padding: 8px; } .ai-float-compact { display: none; } }
