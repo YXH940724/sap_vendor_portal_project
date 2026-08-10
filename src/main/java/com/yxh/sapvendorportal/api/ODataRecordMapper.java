@@ -132,11 +132,33 @@ public class ODataRecordMapper {
             }
             case "supplierCompanies" -> {
                 alias(row, "Supplier", "Supplier", "BusinessPartner");
-                alias(row, "SettlementCurrency", "PaymentCurrency", "PaymentCurrencyCode", "CompanyCodeCurrency", "DocumentCurrency");
+                alias(row, "Currency", "Currency", "PaymentCurrency", "PaymentCurrencyCode", "CompanyCodeCurrency", "DocumentCurrency");
                 alias(row, "PaymentMethod", "PaymentMethod", "PaymentMethodsList");
                 alias(row, "PaymentTerms", "PaymentTerms", "PaymentTermsCode");
-                alias(row, "SettlementCompany", "CompanyName", "CompanyCode");
+                alias(row, "CompanyCodeName", "CompanyCodeName", "CompanyName");
                 alias(row, "SupplierPaymentIsBlocked", "SupplierPaymentIsBlocked", "PaymentIsBlockedForSupplier", "PaymentIsBlocked");
+            }
+            case "supplierBanks" -> {
+                alias(row, "BusinessPartner", "BusinessPartner", "Supplier");
+                alias(row, "BankNumber", "BankNumber", "BankKey");
+                alias(row, "BankName", "BankName");
+                alias(row, "SWIFTCode", "SWIFTCode", "SwiftCode");
+                alias(row, "IBAN", "IBAN");
+            }
+            case "businessPartnerContacts" -> {
+                alias(row, "BusinessPartnerCompany", "BusinessPartnerCompany", "BusinessPartner");
+                alias(row, "ContactPerson", "BusinessPartnerPerson", "ContactPerson");
+            }
+            case "businessPartnerPersons" -> {
+                alias(row, "ContactName", "PersonFullName", "BusinessPartnerFullName", "FullName", "FirstName");
+                alias(row, "ContactPerson", "BusinessPartner");
+                JsonNode address = firstObject(row, "to_BusinessPartnerAddress");
+                if (address != null) {
+                    JsonNode email = firstObject(address, "to_EmailAddress");
+                    if (email != null) copyIfMissing(row, email, "EmailAddress");
+                    JsonNode phone = firstObject(address, "to_PhoneNumber");
+                    if (phone != null) copyIfMissing(row, phone, "PhoneNumber", "PhoneNumberExtension");
+                }
             }
             case "subcontractingComponents" -> normalizeSubcontractingComponent(row);
             default -> { }

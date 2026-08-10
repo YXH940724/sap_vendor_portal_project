@@ -212,16 +212,44 @@ public class PortalController {
         PortalProperties.Service supplierCompany = new PortalProperties.Service();
         supplierCompany.setUrl(businessPartner.getUrl()); supplierCompany.setEntity("A_SupplierCompany"); supplierCompany.setSupplierField("Supplier");
         List<JsonNode> companies = recordMapper.map("supplierCompanies", sapClient.get(supplierCompany, vendorId, "", "Supplier", "CompanyCode asc", top));
+        PortalProperties.Service supplierBank = new PortalProperties.Service();
+        supplierBank.setUrl(businessPartner.getUrl()); supplierBank.setEntity("A_BusinessPartnerBank"); supplierBank.setSupplierField("BusinessPartner");
+        List<JsonNode> banks = recordMapper.map("supplierBanks", sapClient.get(supplierBank, vendorId, "", "BusinessPartner", "BankIdentification asc", top));
+        PortalProperties.Service contactRelationship = new PortalProperties.Service();
+        contactRelationship.setUrl(businessPartner.getUrl()); contactRelationship.setEntity("A_BusinessPartnerContact"); contactRelationship.setSupplierField("BusinessPartnerCompany");
+        List<JsonNode> relationships = recordMapper.map("businessPartnerContacts", sapClient.get(contactRelationship, vendorId, "", "BusinessPartnerPerson", "BusinessPartnerPerson asc", top));
+        List<String> contactIds = relationships.stream().map(contact -> firstText(contact, "ContactPerson", "BusinessPartnerPerson")).filter(id -> !id.isBlank()).distinct().toList();
+        PortalProperties.Service contactPerson = new PortalProperties.Service();
+        contactPerson.setUrl(businessPartner.getUrl()); contactPerson.setEntity("A_BusinessPartner"); contactPerson.setExpand("to_BusinessPartnerAddress,to_BusinessPartnerAddress/to_EmailAddress,to_BusinessPartnerAddress/to_PhoneNumber");
+        List<JsonNode> people = contactIds.isEmpty() ? List.of() : recordMapper.map("businessPartnerPersons", sapClient.getByReferences(contactPerson, contactIds, "BusinessPartner", "BusinessPartner asc", top));
         Map<String, ArrayNode> companiesBySupplier = new LinkedHashMap<>();
         for (JsonNode company : companies) {
             String supplier = firstText(company, "Supplier", "BusinessPartner");
             if (!supplier.isBlank()) companiesBySupplier.computeIfAbsent(supplier, ignored -> JsonNodeFactory.instance.arrayNode()).add(company);
+        }
+        Map<String, JsonNode> peopleById = new LinkedHashMap<>();
+        people.forEach(person -> peopleById.put(firstText(person, "BusinessPartner", "ContactPerson"), person));
+        ArrayNode contacts = JsonNodeFactory.instance.arrayNode();
+        for (JsonNode relationship : relationships) {
+            String personId = firstText(relationship, "ContactPerson", "BusinessPartnerPerson");
+            JsonNode person = peopleById.get(personId);
+            if (person == null) continue;
+            ObjectNode contact = contacts.addObject();
+            contact.put("ContactPerson", personId);
+            copyText(contact, person, "ContactName", "ContactName");
+            copyText(contact, person, "EmailAddress", "EmailAddress");
+            copyText(contact, person, "PhoneNumber", "PhoneNumber");
+            copyText(contact, person, "PhoneNumberExtension", "PhoneNumberExtension");
         }
         return partners.stream().map(partner -> {
             if (!partner.isObject()) return partner;
             ObjectNode result = ((ObjectNode) partner).deepCopy();
             ArrayNode supplierCompanies = companiesBySupplier.get(firstText(result, "Supplier", "BusinessPartner"));
             if (supplierCompanies != null) result.set("SupplierCompanies", supplierCompanies.deepCopy());
+            ArrayNode supplierBanks = JsonNodeFactory.instance.arrayNode();
+            banks.stream().filter(bank -> vendorId.equals(firstText(bank, "BusinessPartner", "Supplier"))).forEach(supplierBanks::add);
+            if (!supplierBanks.isEmpty()) result.set("SupplierBanks", supplierBanks);
+            if (!contacts.isEmpty()) result.set("Contacts", contacts.deepCopy());
             return result;
         }).toList();
     }
@@ -574,6 +602,7 @@ public class PortalController {
         }
         return "PASN-" + PORTAL_ASN_TIME.format(Instant.now()) + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
+    private void copyText(ObjectNode target, JsonNode source, String sourceField, String targetField) { String value = source.path(sourceField).asText(); if (!value.isBlank()) target.put(targetField, value); }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent, boolean freeOfCharge) {
         ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }

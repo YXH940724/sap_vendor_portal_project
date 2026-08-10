@@ -12,10 +12,10 @@ const columns = {
 const labels = {
   PurchaseOrder: '采购订单号', PurchaseOrderItem: '行项目', PurchaseOrderWithItem: '采购订单 / 行号', OrderType: '订单类型', PurchasingItemIsFreeOfCharge: '免费项目', PurchaseOrderItemCategory: '项目类别', IsReturnsItem: '退货项目', IsCompletelyDelivered: '完全交付', SubcontractingComponents: '外协组件', Material: '物料编码', MaterialDescription: '物料描述', MaterialWithDescription: '物料编码 / 描述', DeliveryDate: '交货日期', PurchaseOrderStatus: '订单状态', OrderQuantity: '订单数量', ReceivedQuantity: '已收货数量', OpenReceiptQuantity: '未收货数量', PurchaseOrderQuantityUnit: '单位',
   InbDelivery: 'SAP 内向交货单号', DeliveryDocument: '交货单号', DeliveryDocumentItem: '交货项目', PlannedDeliveryDate: '计划到货日期', ActualDeliveryDate: '实际到货日期', OverallStatus: '状态', LastChangeDate: '最后变更日期', DeliveryDocumentBySupplier: '供应商送货单号', TransportReference: '运输单号', ActualDeliveryQuantity: '实际发运数量', DeliveryQuantityUnit: '发运单位', MaterialDocument: '物料凭证', MaterialDocumentWithYear: '物料凭证 / 年度', MaterialDocumentYear: '凭证年度', MaterialDocumentItem: '项目', PostingDate: '过账日期', GoodsMovementType: '移动类型', ReceiptStatus: '收货状态', QuantityInEntryUnit: '收货数量', EntryUnit: '单位', DocumentDate: '凭证日期', MaterialDocumentHeaderText: '凭证抬头文本', Plant: '工厂', StorageLocation: '库存地点', Batch: '批次', ReferenceDocument: '参考凭证', ReferenceDocumentItem: '参考项目',
-  SupplierInvoice: '发票号码', SupplierInvoiceStatus: '发票状态', DocumentDate: '凭证日期', InvoiceGrossAmount: '发票金额', DocumentCurrency: '币种', Supplier: '供应商编码', SupplierName: '供应商名称', BusinessPartner: '供应商编码',
-  CompanyCode: '公司代码', SettlementCompany: '结算公司', SettlementCurrency: '结算货币', PaymentTerms: '付款条款', PaymentMethod: '付款方式', PaymentMethodsList: '付款方式', PaymentBlockingReason: '付款冻结原因', SupplierPaymentIsBlocked: '供应商付款冻结', PurchasingOrganization: '采购组织', Country: '国家/地区', Region: '省 / 州', CityName: '城市', PostalCode: '邮政编码', StreetName: '街道', HouseNumber: '门牌号', Building: '楼宇', Floor: '楼层', RoomNumber: '房间号', TaxNumber1: '税号', TransportReference: '运输单号', PurchaseOrderDate: '订单日期',
-  ContactName: '联系人', ContactDepartment: '联系人部门', EmailAddress: '电子邮箱', PhoneNumber: '联系电话', PhoneNumberExtension: '分机号', FaxNumber: '传真',
-  BankAccountName: '账户名称', BankCountryKey: '银行国家/地区', BankKey: '银行代码', BankAccount: '银行账号', IBAN: 'IBAN', BankControlKey: '银行控制码', BankIdentification: '银行标识',
+  SupplierInvoice: '发票号码', SupplierInvoiceStatus: '发票状态', DocumentDate: '凭证日期', InvoiceGrossAmount: '发票金额', DocumentCurrency: '币种', Supplier: '供应商编码', SupplierName: '供应商名称', BusinessPartner: '业务伙伴编码',
+  CompanyCode: '公司代码', CompanyCodeName: '公司名称', Currency: '交易货币', PaymentTerms: '付款条款', PaymentMethod: '付款方式', PaymentMethodsList: '付款方式', PaymentBlockingReason: '付款冻结原因', SupplierPaymentIsBlocked: '供应商付款冻结', PurchasingOrganization: '采购组织', Country: '国家/地区', Region: '省 / 州', CityName: '城市', PostalCode: '邮政编码', StreetName: '街道', HouseNumber: '门牌号', Building: '楼宇', Floor: '楼层', RoomNumber: '房间号', TaxNumber1: '税号', TaxNumber5: '税号 5', TransportReference: '运输单号', PurchaseOrderDate: '订单日期',
+  ContactName: '联系人', ContactPerson: '联系人 BP 编码', ContactDepartment: '联系人部门', EmailAddress: '电子邮箱', PhoneNumber: '联系电话', PhoneNumberExtension: '分机号', FaxNumber: '传真',
+  BankAccountName: '账户名称', BankCountryKey: '银行国家/地区', BankKey: '银行代码', BankNumber: '银行号', BankName: '银行名称', SWIFTCode: 'SWIFT Code', BankAccount: '银行账号', IBAN: 'IBAN', BankControlKey: '银行控制码', BankIdentification: '银行标识',
   SupplierInvoiceID: '供应商发票号', FiscalYear: '会计年度', PaymentBlockingReason: '付款冻结原因', InvoiceStatus: '处理状态', BusinessPlace: '业务地点', EmailAddress: '邮箱', PhoneNumber: '联系电话', NetPriceAmount: '净价', NetPriceQuantity: '价格单位数量', TaxCode: '税码', PurchasingDocumentDeletionCode: '删除标识'
 };
 const detailFields = {
@@ -27,10 +27,10 @@ const detailFields = {
 const profileGroups = [
   ['基本资料', ['Supplier', 'SupplierName', 'BusinessPartner', 'CompanyCode', 'PurchasingOrganization']],
   ['注册地址', ['Country', 'Region', 'CityName', 'PostalCode', 'StreetName', 'HouseNumber', 'Building', 'Floor', 'RoomNumber']],
-  ['联系人信息', ['ContactName', 'ContactDepartment', 'EmailAddress', 'PhoneNumber', 'PhoneNumberExtension', 'FaxNumber']],
-  ['银行信息', ['BankAccountName', 'BankCountryKey', 'BankKey', 'BankIdentification', 'BankAccount', 'IBAN', 'BankControlKey']],
+  ['联系人信息', ['Contacts']],
+  ['银行信息', ['SupplierBanks']],
   ['结算信息（按公司）', ['SupplierCompanies']],
-  ['税务信息', ['TaxNumber1']]
+  ['税务信息', ['TaxNumber1', 'TaxNumber5']]
 ];
 const statusOptions = {
   purchaseOrders: ['待交货', '部分收货', '部分完成', '已完成', '已取消'],
@@ -85,8 +85,11 @@ async function renderSupplierProfile(force = false) {
     $('#updateTime').textContent = cached ? '已缓存' : '刚刚';
   } catch (error) { $('#supplierProfile').innerHTML = `<div class="loading">供应商主数据读取失败：${escape(error.message)}</div>`; }
 }
-function profileSection(group, fields, supplier) { if (fields.includes('SupplierCompanies')) return settlementCompaniesSection(supplier.SupplierCompanies); const visible = fields.filter((field) => present(supplier[field])); return `<section><h3>${group}</h3>${visible.length ? `<dl class="profile-grid">${visible.map((field) => `<div><dt>${labels[field] || field}</dt><dd>${fieldValue(field, supplier[field])}</dd></div>`).join('')}</dl>` : '<p class="profile-empty">SAP 当前未提供该组资料。</p>'}</section>`; }
-function settlementCompaniesSection(companies) { if (!Array.isArray(companies) || !companies.length) return '<section><h3>结算信息（按公司）</h3><p class="profile-empty">A_SupplierCompany 当前未返回该供应商的结算数据。</p></section>'; const fields = ['CompanyCode', 'SettlementCompany', 'SettlementCurrency', 'PaymentTerms', 'PaymentMethod', 'PaymentBlockingReason', 'SupplierPaymentIsBlocked']; return `<section><h3>结算信息（按公司）</h3><div class="settlement-company-grid">${companies.map((company) => { const visible = fields.filter((field) => present(company[field])); return `<article class="settlement-company"><b>${escape(company.SettlementCompany || company.CompanyCode || '结算公司')}</b><dl>${visible.map((field) => `<div><dt>${escape(labels[field] || field)}</dt><dd>${fieldValue(field, company[field])}</dd></div>`).join('')}</dl></article>`; }).join('')}</div></section>`; }
+function profileSection(group, fields, supplier) { if (fields.includes('Contacts')) return contactsSection(supplier.Contacts); if (fields.includes('SupplierBanks')) return banksSection(supplier.SupplierBanks); if (fields.includes('SupplierCompanies')) return settlementCompaniesSection(supplier.SupplierCompanies); const visible = fields.filter((field) => present(supplier[field])); return `<section><h3>${group}</h3>${visible.length ? `<dl class="profile-grid">${visible.map((field) => `<div><dt>${labels[field] || field}</dt><dd>${fieldValue(field, supplier[field])}</dd></div>`).join('')}</dl>` : '<p class="profile-empty">SAP 当前未提供该组资料。</p>'}</section>`; }
+function profileCards(title, items, fields, empty) { if (!Array.isArray(items) || !items.length) return `<section><h3>${title}</h3><p class="profile-empty">${empty}</p></section>`; return `<section><h3>${title}</h3><div class="supplier-detail-grid">${items.map((item) => { const visible = fields.filter((field) => present(item[field])); return `<article class="supplier-detail-card"><b>${escape(item[fields[0]] || item[fields[1]] || title)}</b><dl>${visible.map((field) => `<div><dt>${escape(labels[field] || field)}</dt><dd>${fieldValue(field, item[field])}</dd></div>`).join('')}</dl></article>`; }).join('')}</div></section>`; }
+function contactsSection(contacts) { return profileCards('联系人信息', contacts, ['ContactName', 'ContactPerson', 'EmailAddress', 'PhoneNumber', 'PhoneNumberExtension'], 'A_BusinessPartnerContact 当前未返回该供应商的联系人关联数据。'); }
+function banksSection(banks) { return profileCards('银行信息', banks, ['BankName', 'BankNumber', 'SWIFTCode', 'IBAN', 'BankIdentification'], 'A_BusinessPartnerBank 当前未返回该供应商的银行资料。'); }
+function settlementCompaniesSection(companies) { return profileCards('结算信息（按公司）', companies, ['CompanyCodeName', 'PaymentTerms', 'PaymentMethodsList', 'Currency', 'PaymentBlockingReason', 'SupplierPaymentIsBlocked'], 'A_SupplierCompany 当前未返回该供应商的结算数据。'); }
 
 function renderDocument(route, force = false) {
   const resource = resources[route]; const actions = route === 'purchaseOrders' ? `<button class="btn btn-secondary" id="bulkAsn" disabled>基于已选 0 行创建 ASN</button>` : route === 'asns' ? `<button class="btn btn-secondary" id="newAsn">＋ 选择订单行创建 ASN</button>` : '';

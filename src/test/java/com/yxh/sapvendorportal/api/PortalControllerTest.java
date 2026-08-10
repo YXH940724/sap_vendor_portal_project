@@ -113,7 +113,7 @@ class PortalControllerTest {
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
             if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\"}"));
-            if ("A_SupplierCompany".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"Supplier\":\"133000006\",\"CompanyCode\":\"1000\",\"PaymentCurrency\":\"CNY\",\"PaymentTerms\":\"0001\",\"PaymentMethodsList\":\"T\"}"));
+            if ("A_SupplierCompany".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"Supplier\":\"133000006\",\"CompanyCode\":\"1000\",\"CompanyCodeName\":\"示例公司\",\"Currency\":\"CNY\",\"PaymentTerms\":\"0001\",\"PaymentMethodsList\":\"T\"}"));
             return List.of();
         });
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
@@ -122,10 +122,44 @@ class PortalControllerTest {
 
         assertThat(records).singleElement().satisfies(row -> {
             var company = row.path("SupplierCompanies").get(0);
-            assertThat(company.path("CompanyCode").asText()).isEqualTo("1000");
-            assertThat(company.path("SettlementCurrency").asText()).isEqualTo("CNY");
+            assertThat(company.path("CompanyCodeName").asText()).isEqualTo("示例公司");
+            assertThat(company.path("Currency").asText()).isEqualTo("CNY");
             assertThat(company.path("PaymentTerms").asText()).isEqualTo("0001");
-            assertThat(company.path("PaymentMethod").asText()).isEqualTo("T");
+            assertThat(company.path("PaymentMethodsList").asText()).isEqualTo("T");
+        });
+    }
+
+    @Test
+    void loadsBanksAndRealContactsThroughBusinessPartnerRelationship() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\",\"TaxNumber5\":\"TAX-5\"}"));
+            if ("A_BusinessPartnerBank".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"BankNumber\":\"104100006062\",\"BankName\":\"测试银行\",\"SWIFTCode\":\"TESTCNBJ\",\"IBAN\":\"CN00TEST\"}"));
+            if ("A_BusinessPartnerContact".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartnerCompany\":\"133000006\",\"BusinessPartnerPerson\":\"200000001\"}"));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("BusinessPartner"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if (!"A_BusinessPartner".equals(service.getEntity())) return List.of();
+            return List.of(objectMapper.readTree("""
+                    {"BusinessPartner":"200000001","PersonFullName":"王联系人",
+                     "to_BusinessPartnerAddress":{"results":[{"to_EmailAddress":{"results":[{"EmailAddress":"contact@example.com"}]},"to_PhoneNumber":{"results":[{"PhoneNumber":"13800000000"}]}}]}}
+                    """));
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("suppliers", "", 30, mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("TaxNumber5").asText()).isEqualTo("TAX-5");
+            assertThat(row.path("SupplierBanks").get(0).path("BankNumber").asText()).isEqualTo("104100006062");
+            assertThat(row.path("SupplierBanks").get(0).path("SWIFTCode").asText()).isEqualTo("TESTCNBJ");
+            assertThat(row.path("Contacts").get(0).path("ContactName").asText()).isEqualTo("王联系人");
+            assertThat(row.path("Contacts").get(0).path("EmailAddress").asText()).isEqualTo("contact@example.com");
         });
     }
 
