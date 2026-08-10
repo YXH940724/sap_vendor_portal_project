@@ -209,7 +209,7 @@ public class ODataRecordMapper {
         row.put("OrderType", types.isEmpty() ? "标准订单" : String.join(" · ", types));
     }
     private void normalizeSubcontractingComponents(ObjectNode row) {
-        JsonNode components = firstArray(row, "_PurOrdItemComponent", "to_PurOrdItemComponent", "_PurchaseOrderItemComponent", "to_PurchaseOrderItemComponent");
+        JsonNode components = firstArray(row, "POSubcontractingComponent", "_PurOrdItemComponent", "to_PurOrdItemComponent", "_PurchaseOrderItemComponent", "to_PurchaseOrderItemComponent");
         if (components == null || components.isEmpty()) return;
         var normalized = objectMapper.createArrayNode();
         for (JsonNode component : components) {

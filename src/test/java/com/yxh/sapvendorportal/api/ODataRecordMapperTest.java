@@ -137,7 +137,7 @@ class ODataRecordMapperTest {
         var item = objectMapper.readTree("""
                 {"PurchaseOrder":"4500005681","PurchaseOrderItem":"00040","PurchasingItemIsFreeOfCharge":true,
                  "PurchaseOrderItemCategory":"3","IsReturnsItem":true,"IsCompletelyDelivered":true,
-                 "_PurOrdItemComponent":{"value":[{"ComponentMaterial":"COMP-01","ComponentDescription":"外协组件","RequiredQuantity":4,"ComponentUnit":"EA","Plant":"1710"}]}}
+                 "POSubcontractingComponent":{"value":[{"ComponentMaterial":"COMP-01","ComponentDescription":"外协组件","RequiredQuantity":4,"ComponentUnit":"EA","Plant":"1710"}]}}
                 """);
 
         var row = mapper.map("purchaseOrders", List.of(item)).getFirst();
