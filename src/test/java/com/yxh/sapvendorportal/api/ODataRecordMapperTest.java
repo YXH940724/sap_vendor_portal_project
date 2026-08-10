@@ -172,4 +172,29 @@ class ODataRecordMapperTest {
 
         assertThat(row.path("PostingDate").asText()).isEqualTo("/Date(1786233600000)/");
     }
+
+    @Test
+    void expandsSupplierAddressContactAndPrimaryBankDataForProfile() throws Exception {
+        var supplier = objectMapper.readTree("""
+                {"BusinessPartner":"1000001","OrganizationBPName1":"示例供应商",
+                 "to_BusinessPartnerAddress":{"results":[
+                   {"Country":"CN","Region":"SH","CityName":"上海市","PostalCode":"200120","StreetName":"世纪大道","HouseNumber":"100号","CareOfName":"王经理",
+                    "to_EmailAddress":{"results":[{"EmailAddress":"contact@example.com"}]},
+                    "to_PhoneNumber":{"results":[{"PhoneNumber":"021-12345678","PhoneNumberExtension":"801"}]}}
+                 ]},
+                 "to_BusinessPartnerBank":{"results":[
+                   {"BankAccountName":"示例供应商有限公司","BankCountryKey":"CN","BankKey":"102100099996","BankAccount":"6222021234567890","IBAN":"CN00TEST1234567890"}
+                 ]}}
+                """);
+
+        var row = mapper.map("suppliers", List.of(supplier)).getFirst();
+
+        assertThat(row.path("SupplierName").asText()).isEqualTo("示例供应商");
+        assertThat(row.path("StreetName").asText()).isEqualTo("世纪大道");
+        assertThat(row.path("ContactName").asText()).isEqualTo("王经理");
+        assertThat(row.path("EmailAddress").asText()).isEqualTo("contact@example.com");
+        assertThat(row.path("PhoneNumber").asText()).isEqualTo("021-12345678");
+        assertThat(row.path("BankAccount").asText()).isEqualTo("6222021234567890");
+        assertThat(row.path("IBAN").asText()).isEqualTo("CN00TEST1234567890");
+    }
 }

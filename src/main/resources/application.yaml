@@ -23,6 +23,7 @@ portal:
       url: ${SAP_BUSINESS_PARTNER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_BUSINESS_PARTNER}
       entity: A_BusinessPartner
       supplier-field: BusinessPartner
+      expand: to_BusinessPartnerAddress,to_BusinessPartnerAddress/to_EmailAddress,to_BusinessPartnerAddress/to_PhoneNumber,to_BusinessPartnerBank
     purchase-order:
       url: ${SAP_PURCHASE_ORDER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata4/sap/api_purchaseorder_2/srvd_a2x/sap/purchaseorder/0001/}
       entity: PurchaseOrder

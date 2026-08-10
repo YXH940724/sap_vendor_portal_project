@@ -113,6 +113,20 @@ public class ODataRecordMapper {
             case "suppliers" -> {
                 alias(row, "SupplierName", "BusinessPartnerFullName", "OrganizationBPName1", "BusinessPartnerName", "SupplierName");
                 alias(row, "Supplier", "BusinessPartner", "Supplier");
+                JsonNode address = firstObject(row, "to_BusinessPartnerAddress");
+                if (address != null) {
+                    copyIfMissing(row, address, "Country", "Region", "CityName", "PostalCode", "StreetName", "HouseNumber", "Building", "Floor", "RoomNumber", "CareOfName");
+                    JsonNode email = firstObject(address, "to_EmailAddress");
+                    if (email != null) copyIfMissing(row, email, "EmailAddress");
+                    JsonNode phone = firstObject(address, "to_PhoneNumber");
+                    if (phone != null) copyIfMissing(row, phone, "PhoneNumber", "PhoneNumberExtension");
+                    JsonNode fax = firstObject(address, "to_FaxNumber");
+                    if (fax != null) copyIfMissing(row, fax, "FaxNumber");
+                }
+                JsonNode bank = firstObject(row, "to_BusinessPartnerBank");
+                if (bank != null) copyIfMissing(row, bank, "BankAccountName", "BankCountryKey", "BankKey", "BankAccount", "IBAN", "BankControlKey", "BankIdentification");
+                alias(row, "ContactName", "ContactPerson", "ContactPersonFullName", "PersonFullName", "CareOfName");
+                alias(row, "ContactDepartment", "Department", "ContactDepartment");
             }
             default -> { }
         }
@@ -126,6 +140,16 @@ public class ODataRecordMapper {
             if (candidate.isArray()) return candidate;
             if (candidate.path("value").isArray()) return candidate.path("value");
             if (candidate.path("results").isArray()) return candidate.path("results");
+        }
+        return null;
+    }
+    private JsonNode firstObject(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode candidate = node.path(name);
+            if (candidate.isArray() && !candidate.isEmpty() && candidate.get(0).isObject()) return candidate.get(0);
+            if (candidate.path("value").isArray() && !candidate.path("value").isEmpty() && candidate.path("value").get(0).isObject()) return candidate.path("value").get(0);
+            if (candidate.path("results").isArray() && !candidate.path("results").isEmpty() && candidate.path("results").get(0).isObject()) return candidate.path("results").get(0);
+            if (candidate.isObject()) return candidate;
         }
         return null;
     }
