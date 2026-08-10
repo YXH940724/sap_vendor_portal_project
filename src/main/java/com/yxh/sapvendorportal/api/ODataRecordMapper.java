@@ -125,6 +125,10 @@ public class ODataRecordMapper {
                     JsonNode fax = firstObject(address, "to_FaxNumber");
                     if (fax != null) copyIfMissing(row, fax, "FaxNumber");
                 }
+                // 基础主数据中的邮箱、电话属于供应商本体，避免与联系人资料混淆。
+                alias(row, "SupplierEmail", "EmailAddress");
+                alias(row, "SupplierPhone", "PhoneNumber");
+                alias(row, "SupplierPhoneExtension", "PhoneNumberExtension");
                 JsonNode bank = firstObject(row, "to_BusinessPartnerBank");
                 if (bank != null) copyIfMissing(row, bank, "BankAccountName", "BankCountryKey", "BankKey", "BankAccount", "IBAN", "BankControlKey", "BankIdentification");
                 alias(row, "ContactName", "ContactPerson", "ContactPersonFullName", "PersonFullName", "CareOfName");

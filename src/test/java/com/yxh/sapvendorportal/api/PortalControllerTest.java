@@ -137,8 +137,8 @@ class PortalControllerTest {
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
-            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\",\"TaxNumber5\":\"TAX-5\"}"));
-            if ("A_BusinessPartnerBank".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"BankNumber\":\"104100006062\",\"BankName\":\"测试银行\",\"SWIFTCode\":\"TESTCNBJ\",\"IBAN\":\"CN00TEST\"}"));
+            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\",\"TaxNumber5\":\"TAX-5\",\"to_BusinessPartnerAddress\":{\"results\":[{\"to_EmailAddress\":{\"results\":[{\"EmailAddress\":\"supplier@example.com\"}]},\"to_PhoneNumber\":{\"results\":[{\"PhoneNumber\":\"02100000000\"}]}}]}}"));
+            if ("A_BusinessPartnerBank".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"BankNumber\":\"104100006062\",\"BankName\":\"测试银行\",\"SWIFTCode\":\"TESTCNBJ\",\"IBAN\":\"CN00TEST\",\"BankAccount\":\"622200001234\"}"));
             if ("A_BusinessPartnerContact".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartnerCompany\":\"133000006\",\"BusinessPartnerPerson\":\"200000001\"}"));
             return List.of();
         });
@@ -156,8 +156,12 @@ class PortalControllerTest {
 
         assertThat(records).singleElement().satisfies(row -> {
             assertThat(row.path("TaxNumber5").asText()).isEqualTo("TAX-5");
+            assertThat(row.path("SupplierEmail").asText()).isEqualTo("supplier@example.com");
+            assertThat(row.path("SupplierPhone").asText()).isEqualTo("02100000000");
             assertThat(row.path("SupplierBanks").get(0).path("BankNumber").asText()).isEqualTo("104100006062");
             assertThat(row.path("SupplierBanks").get(0).path("SWIFTCode").asText()).isEqualTo("TESTCNBJ");
+            assertThat(row.path("SupplierBanks").get(0).path("IBAN").asText()).isEqualTo("CN00TEST");
+            assertThat(row.path("SupplierBanks").get(0).path("BankAccount").asText()).isEqualTo("622200001234");
             assertThat(row.path("Contacts").get(0).path("ContactName").asText()).isEqualTo("王联系人");
             assertThat(row.path("Contacts").get(0).path("EmailAddress").asText()).isEqualTo("contact@example.com");
         });
