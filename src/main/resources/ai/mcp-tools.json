@@ -34,7 +34,7 @@
     "type": "function",
     "function": {
       "name": "query_asn_status",
-      "description": "通过 SAP ASN API 查询当前供应商已创建的 ASN、供应商发运单号、内向交货单、发运数量、计划到货日期和状态。",
+      "description": "查询当前供应商的发运单据：普通采购订单使用 SAP 内向交货单 / ASN API；退货采购订单使用 SAP 外向送货单 API。返回送货单号、单据类型、采购订单、物料、发运数量、日期和状态。",
       "parameters": {
         "type": "object",
         "properties": {

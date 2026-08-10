@@ -81,6 +81,7 @@ public class ODataRecordMapper {
             }
             case "asns" -> {
                 alias(row, "InbDelivery", "InbDelivery", "InboundDelivery", "DeliveryDocument");
+                alias(row, "DeliveryDocument", "DeliveryDocument", "InbDelivery", "InboundDelivery");
                 alias(row, "PurchaseOrder", "PurchaseOrder", "ReferenceSDDocument");
                 alias(row, "PurchaseOrderItem", "PurchaseOrderItem", "ReferenceSDDocumentItem");
                 alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
@@ -89,6 +90,19 @@ public class ODataRecordMapper {
                 alias(row, "ActualDeliveryQuantity", "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
                 alias(row, "DeliveryQuantityUnit", "DeliveryQuantityUnit", "ActualDeliveryQuantityUnit", "BaseUnit");
                 alias(row, "TransportReference", "TransportReference", "BillOfLading");
+                row.put("DeliveryDirection", "内向交货单");
+            }
+            case "outboundDeliveries" -> {
+                alias(row, "DeliveryDocument", "DeliveryDocument", "OutboundDelivery", "OutbDelivery");
+                alias(row, "PurchaseOrder", "ReferenceSDDocument", "PurchaseOrder");
+                alias(row, "PurchaseOrderItem", "ReferenceSDDocumentItem", "PurchaseOrderItem");
+                alias(row, "DeliveryDocumentItem", "DeliveryDocumentItem", "Item", "OutboundDeliveryItem");
+                alias(row, "OverallStatus", "OverallGoodsMovementStatus", "OverallSDProcessStatus", "OverallStatus", "DeliveryStatus", "Status");
+                alias(row, "MaterialDescription", "MaterialDescription", "DeliveryDocumentItemText", "ItemText", "MaterialName", "ProductDescription");
+                alias(row, "ActualDeliveryQuantity", "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
+                alias(row, "DeliveryQuantityUnit", "DeliveryQuantityUnit", "ActualDeliveryQuantityUnit", "BaseUnit");
+                alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
+                row.put("DeliveryDirection", "外向送货单（退货）");
             }
             case "materialDocuments" -> {
                 JsonNode header = row.path("to_MaterialDocumentHeader");

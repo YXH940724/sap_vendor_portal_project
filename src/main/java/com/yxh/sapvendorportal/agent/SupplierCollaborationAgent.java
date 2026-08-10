@@ -129,8 +129,8 @@ public class SupplierCollaborationAgent {
         String keyword = normalized(input.path("keyword").asText());
         List<Map<String, Object>> records = portal.agentAsns(vendorId).stream()
                 .filter(row -> matches(row, keyword, "InbDelivery", "DeliveryDocument", "PurchaseOrder", "Material", "MaterialDescription"))
-                .limit(15).map(row -> compact(row, List.of("InbDelivery", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "OverallStatus", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "DeliveryDocumentBySupplier"))).toList();
-        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "SAP ASN API"), "查询到 " + records.size() + " 条 ASN / 发运记录" + documentSummary(records, "InbDelivery", "PurchaseOrder"));
+                .limit(15).map(row -> compact(row, List.of("DeliveryDocument", "DeliveryDirection", "InbDelivery", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "OverallStatus", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "DeliveryDocumentBySupplier"))).toList();
+        return new ToolExecution(Map.of("records", records, "count", records.size(), "source", "普通订单：SAP 内向交货单 / ASN API；退货订单：SAP 外向送货单 API"), "查询到 " + records.size() + " 条 ASN / 送货单记录" + documentSummary(records, "DeliveryDocument", "PurchaseOrder"));
     }
 
     private ToolExecution querySettlement(JsonNode input, String vendorId) {

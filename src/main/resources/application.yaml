@@ -34,6 +34,12 @@ portal:
       entity: A_InbDeliveryHeader
       supplier-field: Supplier
       expand: to_DeliveryDocumentItem
+    outbound-delivery:
+      # 仅用于退货采购订单的送货单查询；按采购订单引用隔离，避免跨供应商读取。
+      url: ${SAP_OUTBOUND_DELIVERY_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_OUTBOUND_DELIVERY_SRV;v=0002}
+      entity: A_OutbDeliveryItem
+      scope-mode: purchase_order
+      reference-field: ReferenceSDDocument
     # 仅当租户的 $metadata 确认 ASN 写入实体不同于标准实体时才配置；留空时使用 asn.entity。
     asn-create-path: ${SAP_ASN_CREATE_PATH:}
     asn-create-vendor-field: ${SAP_ASN_CREATE_VENDOR_FIELD:}

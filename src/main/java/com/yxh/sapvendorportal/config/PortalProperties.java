@@ -26,7 +26,7 @@ public class PortalProperties {
         if (!"basic".equals(sap.authMode) && !"bearer".equals(sap.authMode)) return "SAP_AUTH_MODE 仅支持 basic 或 bearer。";
         if ("basic".equals(sap.authMode) && (blank(sap.username) || blank(sap.password))) return "尚未配置 SAP_USERNAME 或 SAP_PASSWORD。";
         if ("bearer".equals(sap.authMode) && blank(sap.bearerToken)) return "尚未配置 SAP_BEARER_TOKEN。";
-        for (Service service : new Service[]{sap.businessPartner, sap.purchaseOrder, sap.asn, sap.materialDocument, sap.supplierInvoice}) {
+        for (Service service : new Service[]{sap.businessPartner, sap.purchaseOrder, sap.asn, sap.outboundDelivery, sap.materialDocument, sap.supplierInvoice}) {
             if (blank(service.url)) return "尚未配置 SAP OData 服务地址。";
             if (blank(service.entity)) return "尚未配置 OData 实体集；为防止越权查询，已拒绝调用。";
             if ("purchase_order".equals(service.scopeMode) && blank(service.referenceField)) return "采购订单关联范围查询尚未配置关联字段；为防止越权查询，已拒绝调用。";
@@ -45,6 +45,7 @@ public class PortalProperties {
         private final Service businessPartner = new Service();
         private final Service purchaseOrder = new Service();
         private final Service asn = new Service();
+        private final Service outboundDelivery = new Service();
         private final Service materialDocument = new Service();
         private final Service supplierInvoice = new Service();
         private String asnCreatePath;
@@ -55,6 +56,7 @@ public class PortalProperties {
         public String getBearerToken() { return bearerToken; } public void setBearerToken(String value) { bearerToken = value; }
         public Service getBusinessPartner() { return businessPartner; } public Service getPurchaseOrder() { return purchaseOrder; }
         public Service getAsn() { return asn; } public Service getMaterialDocument() { return materialDocument; }
+        public Service getOutboundDelivery() { return outboundDelivery; }
         public Service getSupplierInvoice() { return supplierInvoice; }
         public String getAsnCreatePath() { return asnCreatePath; } public void setAsnCreatePath(String value) { asnCreatePath = value; }
         public String getAsnCreateVendorField() { return asnCreateVendorField; } public void setAsnCreateVendorField(String value) { asnCreateVendorField = value; }

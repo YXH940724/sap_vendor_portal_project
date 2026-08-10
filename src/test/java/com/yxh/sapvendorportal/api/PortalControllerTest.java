@@ -105,6 +105,35 @@ class PortalControllerTest {
     }
 
     @Test
+    void queriesOutboundDeliveryApiForReturnPurchaseOrderInsteadOfInboundAsnApi() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001099\"}"));
+            if ("A_InbDeliveryHeader".equals(service.getEntity())) throw new AssertionError("退货订单不应查询内向交货单 API");
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001099\",\"PurchaseOrderItem\":\"00010\",\"IsReturnsItem\":true}"));
+            if ("A_OutbDeliveryItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"DeliveryDocument\":\"8000000999\",\"DeliveryDocumentItem\":\"000010\",\"ReferenceSDDocument\":\"4500001099\",\"ReferenceSDDocumentItem\":\"00010\",\"Material\":\"RET-01\",\"ActualDeliveryQuantity\":2,\"DeliveryQuantityUnit\":\"EA\",\"OverallGoodsMovementStatus\":\"A\"}"));
+            return List.of();
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<JsonNode> records = (List<JsonNode>) controller.data("asns", "", 30, mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("DeliveryDocument").asText()).isEqualTo("8000000999");
+            assertThat(row.path("PurchaseOrder").asText()).isEqualTo("4500001099");
+            assertThat(row.path("DeliveryDirection").asText()).isEqualTo("外向送货单（退货）");
+        });
+    }
+
+    @Test
     void addsSettlementDetailsFromSupplierCompanyApiToSupplierProfile() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);
@@ -436,6 +465,7 @@ class PortalControllerTest {
         configureDirect(properties.getSap().getBusinessPartner(), "A_BusinessPartner");
         configureDirect(properties.getSap().getPurchaseOrder(), "PurchaseOrder");
         configureDirect(properties.getSap().getAsn(), "A_InbDeliveryHeader");
+        configurePurchaseOrderScoped(properties.getSap().getOutboundDelivery(), "A_OutbDeliveryItem");
         configurePurchaseOrderScoped(properties.getSap().getMaterialDocument(), "A_MaterialDocumentItem");
         configureDirect(properties.getSap().getSupplierInvoice(), "A_SupplierInvoice");
         return properties;

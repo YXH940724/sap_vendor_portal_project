@@ -43,7 +43,7 @@ public class PortalController {
     private final Map<String, Resource> resources = Map.of(
             "suppliers", new Resource("businessPartner", "BusinessPartner", "BusinessPartner asc"),
             "purchaseOrders", new Resource("purchaseOrder", "PurchaseOrder", "LastChangeDateTime desc"),
-            "asns", new Resource("asn", "InbDelivery", "LastChangeDate desc"),
+            "asns", new Resource("asn", "DeliveryDocument", "LastChangeDate desc"),
             "materialDocuments", new Resource("materialDocument", "MaterialDocument", "MaterialDocument desc"),
             "invoices", new Resource("supplierInvoice", "SupplierInvoice", "SupplierInvoice desc")
     );
@@ -123,7 +123,7 @@ public class PortalController {
         requireConfigured();
         return reconciliationLines(vendorId, 100).stream().filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0).map(ReconciliationLine::view).toList();
     }
-    private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
+    private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "outboundDelivery" -> properties.getSap().getOutboundDelivery(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -146,8 +146,7 @@ public class PortalController {
         if ("suppliers".equals(resourceName)) return loadSupplierProfile(vendorId, search, top);
         PortalProperties.Service target = service(resource.serviceName());
         if ("asns".equals(resourceName)) {
-            List<JsonNode> asns = recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
-            return enrichWithPurchaseOrderItems(asns, vendorId, top);
+            return loadDeliveryDocuments(vendorId, search, top, loadPurchaseOrders(vendorId, top));
         }
         if ("invoices".equals(resourceName)) {
             List<JsonNode> orderLines = loadPurchaseOrders(vendorId, top);
@@ -177,7 +176,7 @@ public class PortalController {
         Map<String, JsonNode> headerByOrder = new LinkedHashMap<>();
         headers.forEach(header -> headerByOrder.put(header.path("PurchaseOrder").asText(), header));
         List<JsonNode> orderLines = items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
-        return enrichWithReceiptProgress(enrichWithInboundDeliveries(orderLines, vendorId, top), ids, top);
+        return enrichWithReceiptProgress(enrichWithDeliveryDocuments(orderLines, vendorId, top), ids, top);
     }
     private PortalProperties.Service purchaseOrderItemService() {
         PortalProperties.Service itemService = new PortalProperties.Service();
@@ -278,18 +277,35 @@ public class PortalController {
         }
         return result;
     }
-    private List<JsonNode> enrichWithInboundDeliveries(List<JsonNode> orderLines, String vendorId, int top) {
+    private List<JsonNode> loadDeliveryDocuments(String vendorId, String search, int top, List<JsonNode> orderLines) {
+        boolean hasStandardOrders = orderLines.stream().anyMatch(line -> !isReturnPurchaseOrder(line));
+        List<JsonNode> inbound;
+        if (!hasStandardOrders) inbound = List.of();
+        else try { inbound = recordMapper.map("asns", sapClient.get(service("asn"), vendorId, search, "DeliveryDocument", "LastChangeDate desc", top)); }
+        catch (ResponseStatusException ignored) { inbound = List.of(); }
+        List<JsonNode> enrichedInbound = enrichWithPurchaseOrderItems(inbound, orderLines).stream().filter(line -> !isReturnPurchaseOrder(line)).toList();
+        List<String> returnOrders = orderLines.stream().filter(this::isReturnPurchaseOrder).map(line -> firstText(line, "PurchaseOrder")).filter(value -> !value.isBlank()).distinct().toList();
+        if (returnOrders.isEmpty()) return enrichedInbound;
+        List<JsonNode> outbound;
+        try {
+            PortalProperties.Service target = service("outboundDelivery");
+            outbound = recordMapper.map("outboundDeliveries", sapClient.getByReferences(target, returnOrders, target.getReferenceField(), "DeliveryDocument desc", top));
+        } catch (ResponseStatusException ignored) { outbound = List.of(); }
+        List<JsonNode> enrichedOutbound = enrichWithPurchaseOrderItems(outbound, orderLines).stream().filter(this::isReturnPurchaseOrder).toList();
+        List<JsonNode> records = new ArrayList<>(enrichedInbound);
+        records.addAll(enrichedOutbound);
+        return records;
+    }
+    private List<JsonNode> enrichWithDeliveryDocuments(List<JsonNode> orderLines, String vendorId, int top) {
         if (orderLines.isEmpty()) return orderLines;
-        List<JsonNode> asns;
-        try { asns = recordMapper.map("asns", sapClient.get(service("asn"), vendorId, "", "InbDelivery", "LastChangeDate desc", top)); }
-        catch (ResponseStatusException ignored) { return orderLines; }
+        List<JsonNode> deliveries = loadDeliveryDocuments(vendorId, "", top, orderLines);
         Map<String, String> deliveryByOrderLine = new LinkedHashMap<>();
         Map<String, BigDecimal> asnQuantityByOrderLine = new LinkedHashMap<>();
-        for (JsonNode asn : asns) {
-            String key = purchaseOrderLineKey(asn);
-            String delivery = firstText(asn, "InbDelivery", "DeliveryDocument");
+        for (JsonNode deliveryRecord : deliveries) {
+            String key = purchaseOrderLineKey(deliveryRecord);
+            String delivery = firstText(deliveryRecord, "DeliveryDocument", "InbDelivery");
             if (!":".equals(key) && !delivery.isBlank()) deliveryByOrderLine.putIfAbsent(key, delivery);
-            BigDecimal quantity = firstDecimal(asn, "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
+            BigDecimal quantity = firstDecimal(deliveryRecord, "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
             if (!":".equals(key) && quantity != null) asnQuantityByOrderLine.merge(key, quantity, BigDecimal::add);
         }
         return orderLines.stream().map(line -> {
@@ -297,6 +313,7 @@ public class PortalController {
             ObjectNode result = ((ObjectNode) line).deepCopy();
             String delivery = deliveryByOrderLine.get(purchaseOrderLineKey(line));
             if (delivery != null && (result.path("InbDelivery").asText().isBlank())) result.put("InbDelivery", delivery);
+            if (delivery != null && (result.path("DeliveryDocument").asText().isBlank())) result.put("DeliveryDocument", delivery);
             String key = purchaseOrderLineKey(line);
             result.put("HasAsn", deliveryByOrderLine.containsKey(key));
             result.put("CreatedAsnQuantity", decimal(asnQuantityByOrderLine.getOrDefault(key, BigDecimal.ZERO)));
