@@ -90,5 +90,21 @@
         "required": []
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "prepare_print_document",
+      "description": "在当前供应商范围内核对采购订单或送货单的打印数据，并返回相关单据与 Portal 打印操作指引；只提供浏览器打印或另存为 PDF 的指引，不修改或发送 SAP 单据。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "documentType": { "type": "string", "enum": ["purchase_order", "delivery_note"], "description": "必填：purchase_order 为采购订单，delivery_note 为 ASN / 送货单" },
+          "documentNumber": { "type": "string", "description": "必填：采购订单号或送货单号" }
+        },
+        "additionalProperties": false,
+        "required": ["documentType", "documentNumber"]
+      }
+    }
   }
 ]

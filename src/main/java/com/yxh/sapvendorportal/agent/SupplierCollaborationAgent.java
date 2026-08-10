@@ -99,6 +99,7 @@ public class SupplierCollaborationAgent {
                 case "query_settlement_candidates" -> querySettlement(arguments, vendorId);
                 case "prepare_asn_draft" -> prepareAsnDraft(arguments, vendorId);
                 case "prepare_invoice_draft" -> prepareInvoiceDraft(arguments, vendorId);
+                case "prepare_print_document" -> preparePrintDocument(arguments, vendorId);
                 default -> new ToolExecution(Map.of("error", "不支持的工具：" + name), "未执行未知工具");
             };
         } catch (Exception exception) {
@@ -182,6 +183,45 @@ public class SupplierCollaborationAgent {
                 )), "查询到 " + records.size() + " 条可用于预制发票草稿的收货行" + documentSummary(records, "materialDocument", "purchaseOrder"));
     }
 
+    private ToolExecution preparePrintDocument(JsonNode input, String vendorId) {
+        String documentType = normalized(input.path("documentType").asText());
+        String documentNumber = normalized(input.path("documentNumber").asText());
+        if (documentNumber.isBlank()) return new ToolExecution(Map.of("error", "请提供需要打印的单据号。"), "缺少单据号，无法提供打印指引");
+        if ("purchase_order".equals(documentType)) {
+            List<Map<String, Object>> records = portal.agentPurchaseOrders(vendorId).stream()
+                    .filter(row -> documentNumber.equals(normalized(row.path("PurchaseOrder").asText())))
+                    .limit(50).map(this::orderView).toList();
+            return new ToolExecution(Map.of(
+                    "documentType", "采购订单",
+                    "documentNumber", documentNumber,
+                    "records", records,
+                    "count", records.size(),
+                    "source", "SAP 采购订单 API（Portal 当前供应商范围）",
+                    "nextSteps", List.of(
+                            "进入“采购订单”页面，以采购订单 " + documentNumber + " 筛选对应行。",
+                            "核对订单行、物料、交期、数量、价格和状态后，点击任一行的“打印订单”。",
+                            "浏览器会打开 A4 打印预览；选择打印机，或选择“另存为 PDF”保存。打印不会修改或发送 SAP 单据。"
+                    )), "已核对采购订单 " + documentNumber + " 的 " + records.size() + " 条打印行");
+        }
+        if ("delivery_note".equals(documentType)) {
+            List<Map<String, Object>> records = portal.agentAsns(vendorId).stream()
+                    .filter(row -> documentNumber.equals(normalized(row.path("DeliveryDocument").asText())) || documentNumber.equals(normalized(row.path("InbDelivery").asText())))
+                    .limit(50).map(row -> compact(row, List.of("DeliveryDocument", "DeliveryDirection", "InbDelivery", "DeliveryDocumentItem", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "ActualDeliveryDate", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "OverallStatus", "DeliveryDocumentBySupplier", "TransportReference", "Plant", "StorageLocation", "Batch"))).toList();
+            return new ToolExecution(Map.of(
+                    "documentType", "ASN / 送货单",
+                    "documentNumber", documentNumber,
+                    "records", records,
+                    "count", records.size(),
+                    "source", "普通订单：SAP 内向交货单 / ASN API；退货订单：SAP 外向送货单 API",
+                    "nextSteps", List.of(
+                            "进入“ASN / 发运”页面，以送货单 " + documentNumber + "、关联采购订单或物料筛选对应行。",
+                            "核对单据类型、关联订单、物料、发运数量、日期、供应商发运单号和运输参考号后，点击任一行的“打印送货单”。",
+                            "浏览器会将同一送货单的当前页面行汇总为 A4 打印预览；选择打印机，或选择“另存为 PDF”保存。退货订单展示 SAP 外向送货单数据，打印不会修改或发送 SAP 单据。"
+                    )), "已核对送货单 " + documentNumber + " 的 " + records.size() + " 条打印行");
+        }
+        return new ToolExecution(Map.of("error", "documentType 仅支持 purchase_order 或 delivery_note。"), "不支持的打印单据类型");
+    }
+
     private Map<String, Object> orderView(JsonNode row) {
         return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "OrderType", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "IsCompletelyDelivered", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "CreatedAsnQuantity", "UnclearedAsnQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
     }
@@ -236,6 +276,7 @@ public class SupplierCollaborationAgent {
             case "query_settlement_candidates" -> "收货结算查询";
             case "prepare_asn_draft" -> "ASN 草稿校验";
             case "prepare_invoice_draft" -> "预制发票草稿校验";
+            case "prepare_print_document" -> "单据打印指引";
             default -> name;
         };
     }
