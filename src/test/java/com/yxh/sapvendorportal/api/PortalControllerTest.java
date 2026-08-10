@@ -230,6 +230,9 @@ class PortalControllerTest {
             if ("PurchaseOrderItem".equals(service.getEntity())) {
                 return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":20,\"PurchaseOrderQuantityUnit\":\"EA\"}"));
             }
+            if ("POSubcontractingComponent".equals(service.getEntity())) {
+                return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"ComponentMaterial\":\"COMP-01\",\"RequiredQuantity\":3,\"ComponentUnit\":\"EA\"}"));
+            }
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10}"));
         });
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
@@ -243,6 +246,7 @@ class PortalControllerTest {
             assertThat(row.path("CreatedAsnQuantity").asText()).isEqualTo("15");
             assertThat(row.path("UnclearedAsnQuantity").asText()).isEqualTo("5");
             assertThat(row.path("AsnAvailableQuantity").asText()).isEqualTo("5");
+            assertThat(row.path("SubcontractingComponents").get(0).path("material").asText()).isEqualTo("COMP-01");
         });
     }
 

@@ -138,6 +138,7 @@ public class ODataRecordMapper {
                 alias(row, "SettlementCompany", "CompanyName", "CompanyCode");
                 alias(row, "SupplierPaymentIsBlocked", "SupplierPaymentIsBlocked", "PaymentIsBlockedForSupplier", "PaymentIsBlocked");
             }
+            case "subcontractingComponents" -> normalizeSubcontractingComponent(row);
             default -> { }
         }
         return row;
@@ -223,6 +224,13 @@ public class ODataRecordMapper {
             normalized.add(item);
         }
         if (!normalized.isEmpty()) row.set("SubcontractingComponents", normalized);
+    }
+    private void normalizeSubcontractingComponent(ObjectNode row) {
+        copyFirst(row, row, "material", "Material", "ComponentMaterial", "ReservationItem");
+        copyFirst(row, row, "description", "MaterialDescription", "ComponentDescription", "PurchaseOrderItemText", "ItemText");
+        copyFirst(row, row, "quantity", "RequiredQuantity", "ComponentQuantity", "Quantity", "EntryQuantity");
+        copyFirst(row, row, "unit", "PurchaseOrderQuantityUnit", "ComponentUnit", "QuantityUnit", "EntryUnit", "UnitOfMeasure");
+        copyFirst(row, row, "plant", "Plant", "ProductionPlant");
     }
     private BigDecimal firstDecimal(ObjectNode row, String... names) {
         for (String name : names) {

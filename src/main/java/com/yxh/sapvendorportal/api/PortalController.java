@@ -173,6 +173,7 @@ public class PortalController {
         List<String> ids = purchaseOrderIds(headers);
         if (ids.isEmpty()) return List.of();
         List<JsonNode> items = recordMapper.map("purchaseOrders", sapClient.getByReferences(purchaseOrderItemService(), ids, "PurchaseOrder", "PurchaseOrder asc", top));
+        items = enrichWithSubcontractingComponents(items, ids, top);
         Map<String, JsonNode> headerByOrder = new LinkedHashMap<>();
         headers.forEach(header -> headerByOrder.put(header.path("PurchaseOrder").asText(), header));
         List<JsonNode> orderLines = items.stream().map(item -> enrichPurchaseOrderItem(item, headerByOrder.get(item.path("PurchaseOrder").asText()))).toList();
@@ -182,9 +183,28 @@ public class PortalController {
         PortalProperties.Service itemService = new PortalProperties.Service();
         itemService.setUrl(properties.getSap().getPurchaseOrder().getUrl());
         itemService.setEntity("PurchaseOrderItem");
-        // POSubcontractingComponent 为当前租户 $metadata 中确认的外协组件导航属性。
-        itemService.setExpand("_PurchaseOrderScheduleLineTP,POSubcontractingComponent");
+        itemService.setExpand("_PurchaseOrderScheduleLineTP");
         return itemService;
+    }
+    private List<JsonNode> enrichWithSubcontractingComponents(List<JsonNode> orderLines, List<String> purchaseOrders, int top) {
+        if (orderLines.isEmpty() || purchaseOrders.isEmpty()) return orderLines;
+        PortalProperties.Service componentService = new PortalProperties.Service();
+        componentService.setUrl(properties.getSap().getPurchaseOrder().getUrl()); componentService.setEntity("POSubcontractingComponent"); componentService.setReferenceField("PurchaseOrder");
+        List<JsonNode> components;
+        try { components = recordMapper.map("subcontractingComponents", sapClient.getByReferences(componentService, purchaseOrders, "PurchaseOrder", "PurchaseOrder asc", top)); }
+        catch (ResponseStatusException ignored) { return orderLines; }
+        Map<String, ArrayNode> componentsByOrderLine = new LinkedHashMap<>();
+        for (JsonNode component : components) {
+            String key = purchaseOrderLineKey(component);
+            if (!":".equals(key)) componentsByOrderLine.computeIfAbsent(key, ignored -> JsonNodeFactory.instance.arrayNode()).add(component);
+        }
+        return orderLines.stream().map(line -> {
+            if (!line.isObject()) return line;
+            ObjectNode result = ((ObjectNode) line).deepCopy();
+            ArrayNode lineComponents = componentsByOrderLine.get(purchaseOrderLineKey(line));
+            if (lineComponents != null) result.set("SubcontractingComponents", lineComponents.deepCopy());
+            return result;
+        }).toList();
     }
     private List<JsonNode> loadSupplierProfile(String vendorId, String search, int top) {
         PortalProperties.Service businessPartner = service("businessPartner");
