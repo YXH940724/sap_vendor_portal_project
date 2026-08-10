@@ -123,7 +123,7 @@ public class PortalController {
         requireConfigured();
         return reconciliationLines(vendorId, 100).stream().filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0).map(ReconciliationLine::view).toList();
     }
-    private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "outboundDelivery" -> properties.getSap().getOutboundDelivery(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
+    private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "outboundDelivery" -> properties.getSap().getOutboundDelivery(); case "material" -> properties.getSap().getMaterial(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -192,6 +192,7 @@ public class PortalController {
         List<JsonNode> components;
         try { components = recordMapper.map("subcontractingComponents", sapClient.getByReferences(componentService, purchaseOrders, "PurchaseOrder", "PurchaseOrder asc", top)); }
         catch (ResponseStatusException ignored) { return orderLines; }
+        components = enrichSubcontractingComponentDescriptions(components, top);
         Map<String, ArrayNode> componentsByOrderLine = new LinkedHashMap<>();
         for (JsonNode component : components) {
             String key = purchaseOrderLineKey(component);
@@ -202,6 +203,33 @@ public class PortalController {
             ObjectNode result = ((ObjectNode) line).deepCopy();
             ArrayNode lineComponents = componentsByOrderLine.get(purchaseOrderLineKey(line));
             if (lineComponents != null) result.set("SubcontractingComponents", lineComponents.deepCopy());
+            return result;
+        }).toList();
+    }
+    private List<JsonNode> enrichSubcontractingComponentDescriptions(List<JsonNode> components, int top) {
+        List<String> materialIds = components.stream().filter(JsonNode::isObject)
+                .filter(component -> firstText(component, "description").isBlank())
+                .map(component -> firstText(component, "material")).filter(value -> !value.isBlank()).distinct().toList();
+        if (materialIds.isEmpty()) return components;
+        List<JsonNode> materialRecords;
+        try {
+            PortalProperties.Service materialService = service("material");
+            materialRecords = sapClient.getByReferences(materialService, materialIds, materialService.getReferenceField(), "Product asc", top);
+        } catch (ResponseStatusException ignored) { return components; }
+        if (materialRecords == null || materialRecords.isEmpty()) return components;
+        Map<String, String> descriptionsByMaterial = new LinkedHashMap<>();
+        for (JsonNode material : materialRecords) {
+            String code = firstText(material, "Product", "Material");
+            String description = firstText(material, "ProductDescription", "MaterialDescription", "Description");
+            if (!code.isBlank() && !description.isBlank()) descriptionsByMaterial.putIfAbsent(code, description);
+        }
+        if (descriptionsByMaterial.isEmpty()) return components;
+        return components.stream().map(component -> {
+            if (!component.isObject() || !firstText(component, "description").isBlank()) return component;
+            String description = descriptionsByMaterial.get(firstText(component, "material"));
+            if (description == null) return component;
+            ObjectNode result = ((ObjectNode) component).deepCopy();
+            result.put("description", description);
             return result;
         }).toList();
     }

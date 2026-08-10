@@ -142,7 +142,8 @@ class ODataRecordMapperTest {
 
         var row = mapper.map("purchaseOrders", List.of(item)).getFirst();
 
-        assertThat(row.path("OrderType").asText()).isEqualTo("免费订单 · 外协订单 · 退货订单 · 已完成订单");
+        assertThat(row.path("OrderType").asText()).isEqualTo("免费订单 · 外协订单 · 退货订单");
+        assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("已完成");
         assertThat(row.path("SubcontractingComponents")).singleElement().satisfies(component -> {
             assertThat(component.path("material").asText()).isEqualTo("COMP-01");
             assertThat(component.path("quantity").asText()).isEqualTo("4");

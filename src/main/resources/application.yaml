@@ -40,6 +40,12 @@ portal:
       entity: A_OutbDeliveryItem
       scope-mode: purchase_order
       reference-field: ReferenceSDDocument
+    material:
+      # 仅查询外协组件已返回的物料编码，用于补足组件物料描述。
+      url: ${SAP_MATERIAL_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_PRODUCT_SRV}
+      entity: A_ProductDescription
+      scope-mode: reference
+      reference-field: Product
     # 仅当租户的 $metadata 确认 ASN 写入实体不同于标准实体时才配置；留空时使用 asn.entity。
     asn-create-path: ${SAP_ASN_CREATE_PATH:}
     asn-create-vendor-field: ${SAP_ASN_CREATE_VENDOR_FIELD:}

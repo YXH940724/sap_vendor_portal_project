@@ -302,6 +302,8 @@ class PortalControllerTest {
             }
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10}"));
         });
+        when(sapClient.getByReferences(any(), anyList(), eq("Product"), anyString(), anyInt()))
+                .thenReturn(List.of(objectMapper.readTree("{\"Product\":\"COMP-01\",\"ProductDescription\":\"外协组件物料描述\"}")));
         PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class));
@@ -314,6 +316,7 @@ class PortalControllerTest {
             assertThat(row.path("UnclearedAsnQuantity").asText()).isEqualTo("5");
             assertThat(row.path("AsnAvailableQuantity").asText()).isEqualTo("5");
             assertThat(row.path("SubcontractingComponents").get(0).path("material").asText()).isEqualTo("COMP-01");
+            assertThat(row.path("SubcontractingComponents").get(0).path("description").asText()).isEqualTo("外协组件物料描述");
         });
     }
 
@@ -466,6 +469,7 @@ class PortalControllerTest {
         configureDirect(properties.getSap().getPurchaseOrder(), "PurchaseOrder");
         configureDirect(properties.getSap().getAsn(), "A_InbDeliveryHeader");
         configurePurchaseOrderScoped(properties.getSap().getOutboundDelivery(), "A_OutbDeliveryItem");
+        configureReferenceScoped(properties.getSap().getMaterial(), "A_ProductDescription", "Product");
         configurePurchaseOrderScoped(properties.getSap().getMaterialDocument(), "A_MaterialDocumentItem");
         configureDirect(properties.getSap().getSupplierInvoice(), "A_SupplierInvoice");
         return properties;
@@ -482,5 +486,12 @@ class PortalControllerTest {
         service.setEntity(entity);
         service.setScopeMode("purchase_order");
         service.setReferenceField("PurchaseOrder");
+    }
+
+    private void configureReferenceScoped(PortalProperties.Service service, String entity, String referenceField) {
+        service.setUrl("https://sap.example.test/odata");
+        service.setEntity(entity);
+        service.setScopeMode("reference");
+        service.setReferenceField(referenceField);
     }
 }

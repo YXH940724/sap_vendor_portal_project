@@ -246,7 +246,6 @@ public class ODataRecordMapper {
         if (booleanValue(row, "PurchasingItemIsFreeOfCharge")) types.add("免费订单");
         if ("3".equals(row.path("PurchaseOrderItemCategory").asText().trim())) types.add("外协订单");
         if (booleanValue(row, "IsReturnsItem", "ReturnsItem", "ReturnsIndicator")) types.add("退货订单");
-        if (booleanValue(row, "IsCompletelyDelivered")) types.add("已完成订单");
         row.put("OrderType", types.isEmpty() ? "标准订单" : String.join(" · ", types));
     }
     private void normalizeSubcontractingComponents(ObjectNode row) {
