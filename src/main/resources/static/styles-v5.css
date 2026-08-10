@@ -39,10 +39,11 @@
 .reconciliation-table td:nth-child(12) .table-link:hover { background: #dcefff; }
 
 /* AI 助手是可移动的浮动工具：单击打开，拖动避让，减号缩成不遮挡操作的圆形图标。 */
-.ai-float { position: fixed; z-index: 42; right: 28px; bottom: 26px; display: flex; align-items: flex-start; gap: 4px; }
-.ai-float .ai-launcher { position: static; right: auto; bottom: auto; }
-.ai-float-move, .ai-float-compact { width: 20px; height: 20px; padding: 0; border: 1px solid #a7c4e5; border-radius: 50%; color: #2b5f95; background: #f8fbff; font-size: 15px; line-height: 1; }
-.ai-float-move { cursor: grab; touch-action: none; font-size: 13px; }
+.ai-float { position: fixed; z-index: 42; right: 28px; bottom: 26px; display: grid; grid-template-areas: "move compact" "launcher launcher"; grid-template-columns: auto auto; justify-items: end; gap: 5px; }
+.ai-float .ai-launcher { position: static; right: auto; bottom: auto; grid-area: launcher; }
+.ai-float-move, .ai-float-compact { width: 27px; height: 27px; padding: 0; border: 1px solid #a7c4e5; border-radius: 8px; color: #2b5f95; background: #f8fbff; box-shadow: 0 3px 8px rgba(16,51,98,.14); font-size: 16px; line-height: 1; }
+.ai-float-move { grid-area: move; cursor: grab; touch-action: none; font-size: 14px; }
+.ai-float-compact { grid-area: compact; }
 .ai-float-move:active { cursor: grabbing; }
 .ai-float-move:hover, .ai-float-compact:hover { color: #fff; background: #286eca; }
 .ai-float.compact { gap: 3px; }
