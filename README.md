@@ -34,6 +34,16 @@ mvn spring-boot:run
 
 ## 配置 SAP OData
 
+### 性能与数据刷新
+
+Portal 会按供应商编码隔离并缓存 SAP 读取结果，默认有效期为 120 秒；同一供应商在工作台、订单、ASN、收货、对账与 AI 查询间会复用短期快照，并合并并发的相同读取请求。页面上的“刷新数据”会携带强制刷新标识，立即清空当前供应商缓存；成功创建 ASN 或预制发票后也会自动清空对应缓存。因此缓存不会跨供应商泄露，也不会覆盖用户主动刷新或写入后的实时校验。
+
+可在 `.env` 调整，设为 `0` 可完全关闭服务端缓存：
+
+```bash
+PORTAL_SAP_CACHE_TTL_SECONDS=120
+```
+
 `.env.example` 已写入本次提供的 5 个服务根地址；标准实体集和供应商隔离字段由 Portal 固定处理，无需逐项配置。创建 ASN 前，Portal 会读取 SAP `$metadata`，确认目标实体集存在且允许创建。
 
 如租户确认写入实体集不是 `A_InbDeliveryHeader`，可额外设置 `SAP_ASN_CREATE_PATH`；如供应商字段不是 `Supplier`，可设置 `SAP_ASN_CREATE_VENDOR_FIELD`。这两个配置仅用于租户扩展，不影响默认标准 API。

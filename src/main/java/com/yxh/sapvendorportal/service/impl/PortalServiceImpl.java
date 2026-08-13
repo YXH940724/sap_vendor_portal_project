@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yxh.sapvendorportal.common.cache.VendorDataCache;
 import com.yxh.sapvendorportal.common.security.VendorScopeResolver;
 import com.yxh.sapvendorportal.config.PortalProperties;
 import com.yxh.sapvendorportal.integration.sap.SapODataClient;
@@ -11,6 +12,7 @@ import com.yxh.sapvendorportal.mapper.ODataRecordMapper;
 import com.yxh.sapvendorportal.service.PortalService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class PortalServiceImpl implements PortalService {
@@ -41,6 +44,7 @@ public class PortalServiceImpl implements PortalService {
     private final VendorScopeResolver scopeResolver;
     private final SapODataClient sapClient;
     private final ODataRecordMapper recordMapper;
+    private final VendorDataCache vendorDataCache;
     private final Map<String, Resource> resources = Map.of(
             "suppliers", new Resource("businessPartner", "BusinessPartner", "BusinessPartner asc"),
             "purchaseOrders", new Resource("purchaseOrder", "PurchaseOrder", "LastChangeDateTime desc"),
@@ -48,20 +52,28 @@ public class PortalServiceImpl implements PortalService {
             "materialDocuments", new Resource("materialDocument", "MaterialDocument", "MaterialDocument desc"),
             "invoices", new Resource("supplierInvoice", "SupplierInvoice", "SupplierInvoice desc")
     );
-    public PortalServiceImpl(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
+    @Autowired
+    public PortalServiceImpl(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper, VendorDataCache vendorDataCache) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; this.vendorDataCache = vendorDataCache; }
+    /** 保留简化构造器供单元测试和嵌入式调用使用。 */
+    public PortalServiceImpl(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this(properties, scopeResolver, sapClient, recordMapper, new VendorDataCache(properties)); }
 
     public Map<String, Object> health() { String issue = properties.validationIssue(); return Map.of("ok", true, "configured", issue == null, "issue", issue == null ? "" : issue); }
     public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "lark_bitable".equals(scope.identitySource()) ? "signed_session" : "stateless_portal"); }
-    public Map<String, Object> dashboard(HttpServletRequest request) {
+    public Map<String, Object> dashboard(HttpServletRequest request) { return dashboard(request, false); }
+    public Map<String, Object> dashboard(HttpServletRequest request, boolean refresh) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         requirePermission(scope, "ORDER_READ");
+        if (refresh) vendorDataCache.invalidateVendor(scope.vendorId());
         LoadResult ordersResult = safelyLoad("purchaseOrders", scope.vendorId(), "", 100, List.of());
         List<JsonNode> orders = ordersResult.records();
         List<String> purchaseOrders = purchaseOrderIds(orders);
-        LoadResult asnsResult = safelyLoad("asns", scope.vendorId(), "", 100, purchaseOrders);
-        LoadResult receiptsResult = safelyLoad("materialDocuments", scope.vendorId(), "", 100, purchaseOrders);
-        LoadResult invoicesResult = safelyLoad("invoices", scope.vendorId(), "", 100, purchaseOrders);
+        CompletableFuture<LoadResult> asnsFuture = CompletableFuture.supplyAsync(() -> safelyLoad("asns", scope.vendorId(), "", 100, purchaseOrders));
+        CompletableFuture<LoadResult> receiptsFuture = CompletableFuture.supplyAsync(() -> safelyLoad("materialDocuments", scope.vendorId(), "", 100, purchaseOrders));
+        CompletableFuture<LoadResult> invoicesFuture = CompletableFuture.supplyAsync(() -> safelyLoad("invoices", scope.vendorId(), "", 100, purchaseOrders));
+        LoadResult asnsResult = asnsFuture.join();
+        LoadResult receiptsResult = receiptsFuture.join();
+        LoadResult invoicesResult = invoicesFuture.join();
         List<JsonNode> asns = asnsResult.records();
         List<JsonNode> receipts = receiptsResult.records();
         List<JsonNode> invoices = invoicesResult.records();
@@ -80,15 +92,18 @@ public class PortalServiceImpl implements PortalService {
         result.put("retrievedAt", Instant.now().toString());
         return result;
     }
-    public Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request) {
+    public Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request) { return data(resourceName, search, top, request, false); }
+    public Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request, boolean refresh) {
         requireConfigured(); Resource resource = resources.get(resourceName); if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
-        var scope = scopeResolver.resolve(request); requirePermission(scope, permissionFor(resourceName)); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
+        var scope = scopeResolver.resolve(request); requirePermission(scope, permissionFor(resourceName)); if (refresh) vendorDataCache.invalidateVendor(scope.vendorId()); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
         Map<String, Object> response = new LinkedHashMap<>(); response.put("resource", resourceName); response.put("vendorId", scope.vendorId()); response.put("records", records); response.put("count", records.size()); response.put("retrievedAt", Instant.now().toString()); return response;
     }
-    public Map<String, Object> reconciliation(HttpServletRequest request) {
+    public Map<String, Object> reconciliation(HttpServletRequest request) { return reconciliation(request, false); }
+    public Map<String, Object> reconciliation(HttpServletRequest request, boolean refresh) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         requirePermission(scope, "SETTLEMENT_READ");
+        if (refresh) vendorDataCache.invalidateVendor(scope.vendorId());
         List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream()
                 .filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0)
                 .map(ReconciliationLine::view).toList();
@@ -103,6 +118,7 @@ public class PortalServiceImpl implements PortalService {
         submission.put("portalAsnNumber", portalAsnNumber);
         validateAsnSources(submission, scope.vendorId());
         JsonNode sapResult = sapClient.createAsn(scope.vendorId(), submission);
+        vendorDataCache.invalidateVendor(scope.vendorId());
         JsonNode delivery = sapResult.path("d").isObject() ? sapResult.path("d") : sapResult;
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("vendorId", scope.vendorId());
@@ -116,7 +132,9 @@ public class PortalServiceImpl implements PortalService {
         var scope = scopeResolver.resolve(request);
         requirePermission(scope, "INVOICE_CREATE");
         ObjectNode validated = validateAndBuildInvoice(input, scope.vendorId());
-        return Map.of("vendorId", scope.vendorId(), "result", sapClient.createSupplierInvoice(scope.vendorId(), validated));
+        Map<String, Object> response = Map.of("vendorId", scope.vendorId(), "result", sapClient.createSupplierInvoice(scope.vendorId(), validated));
+        vendorDataCache.invalidateVendor(scope.vendorId());
+        return response;
     }
     public List<JsonNode> agentPurchaseOrders(String vendorId) { requireConfigured(); return load("purchaseOrders", vendorId, "", 100, List.of()); }
     public List<JsonNode> agentAsns(String vendorId) { requireConfigured(); return load("asns", vendorId, "", 100, List.of()); }
@@ -147,6 +165,11 @@ public class PortalServiceImpl implements PortalService {
         return result;
     }
     private List<JsonNode> load(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
+        String references = purchaseOrders == null || purchaseOrders.isEmpty() ? "" : String.join(",", purchaseOrders.stream().sorted().toList());
+        String variant = "top=" + top + ";search=" + (search == null ? "" : search) + ";orders=" + references;
+        return vendorDataCache.get(resourceName, vendorId, variant, () -> loadUncached(resourceName, vendorId, search, top, purchaseOrders));
+    }
+    private List<JsonNode> loadUncached(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         Resource resource = resources.get(resourceName);
         if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
         if ("purchaseOrders".equals(resourceName)) return loadPurchaseOrders(vendorId, top);
@@ -175,6 +198,9 @@ public class PortalServiceImpl implements PortalService {
         return recordMapper.map(resourceName, sapClient.get(target, vendorId, search, resource.searchField(), resource.orderBy(), top));
     }
     private List<JsonNode> loadPurchaseOrders(String vendorId, int top) {
+        return vendorDataCache.get("purchaseOrders", vendorId, "top=" + top, () -> loadPurchaseOrdersUncached(vendorId, top));
+    }
+    private List<JsonNode> loadPurchaseOrdersUncached(String vendorId, int top) {
         List<JsonNode> headers = sapClient.get(service("purchaseOrder"), vendorId, "", "PurchaseOrder", "LastChangeDateTime desc", top);
         List<String> ids = purchaseOrderIds(headers);
         if (ids.isEmpty()) return List.of();
@@ -241,20 +267,28 @@ public class PortalServiceImpl implements PortalService {
         }).toList();
     }
     private List<JsonNode> loadSupplierProfile(String vendorId, String search, int top) {
+        return vendorDataCache.get("supplierProfile", vendorId, "top=" + top + ";search=" + (search == null ? "" : search), () -> loadSupplierProfileUncached(vendorId, search, top));
+    }
+    private List<JsonNode> loadSupplierProfileUncached(String vendorId, String search, int top) {
         PortalProperties.Service businessPartner = service("businessPartner");
-        List<JsonNode> partners = recordMapper.map("suppliers", sapClient.get(businessPartner, vendorId, search, "BusinessPartner", "BusinessPartner asc", top));
         PortalProperties.Service supplierMaster = new PortalProperties.Service();
         supplierMaster.setUrl(businessPartner.getUrl()); supplierMaster.setEntity("A_Supplier"); supplierMaster.setSupplierField("Supplier");
-        List<JsonNode> supplierMasters = sapClient.get(supplierMaster, vendorId, "", "Supplier", "Supplier asc", top);
         PortalProperties.Service supplierCompany = new PortalProperties.Service();
         supplierCompany.setUrl(businessPartner.getUrl()); supplierCompany.setEntity("A_SupplierCompany"); supplierCompany.setSupplierField("Supplier");
-        List<JsonNode> companies = recordMapper.map("supplierCompanies", sapClient.get(supplierCompany, vendorId, "", "Supplier", "CompanyCode asc", top));
         PortalProperties.Service supplierBank = new PortalProperties.Service();
         supplierBank.setUrl(businessPartner.getUrl()); supplierBank.setEntity("A_BusinessPartnerBank"); supplierBank.setSupplierField("BusinessPartner");
-        List<JsonNode> banks = recordMapper.map("supplierBanks", sapClient.get(supplierBank, vendorId, "", "BusinessPartner", "BankIdentification asc", top));
         PortalProperties.Service contactRelationship = new PortalProperties.Service();
         contactRelationship.setUrl(businessPartner.getUrl()); contactRelationship.setEntity("A_BusinessPartnerContact"); contactRelationship.setSupplierField("BusinessPartnerCompany");
-        List<JsonNode> relationships = recordMapper.map("businessPartnerContacts", sapClient.get(contactRelationship, vendorId, "", "BusinessPartnerPerson", "BusinessPartnerPerson asc", top));
+        CompletableFuture<List<JsonNode>> partnersFuture = CompletableFuture.supplyAsync(() -> recordMapper.map("suppliers", sapClient.get(businessPartner, vendorId, search, "BusinessPartner", "BusinessPartner asc", top)));
+        CompletableFuture<List<JsonNode>> supplierMastersFuture = CompletableFuture.supplyAsync(() -> sapClient.get(supplierMaster, vendorId, "", "Supplier", "Supplier asc", top));
+        CompletableFuture<List<JsonNode>> companiesFuture = CompletableFuture.supplyAsync(() -> recordMapper.map("supplierCompanies", sapClient.get(supplierCompany, vendorId, "", "Supplier", "CompanyCode asc", top)));
+        CompletableFuture<List<JsonNode>> banksFuture = CompletableFuture.supplyAsync(() -> recordMapper.map("supplierBanks", sapClient.get(supplierBank, vendorId, "", "BusinessPartner", "BankIdentification asc", top)));
+        CompletableFuture<List<JsonNode>> relationshipsFuture = CompletableFuture.supplyAsync(() -> recordMapper.map("businessPartnerContacts", sapClient.get(contactRelationship, vendorId, "", "BusinessPartnerPerson", "BusinessPartnerPerson asc", top)));
+        List<JsonNode> partners = partnersFuture.join();
+        List<JsonNode> supplierMasters = supplierMastersFuture.join();
+        List<JsonNode> companies = companiesFuture.join();
+        List<JsonNode> banks = banksFuture.join();
+        List<JsonNode> relationships = relationshipsFuture.join();
         List<String> contactIds = relationships.stream().map(contact -> firstText(contact, "ContactPerson", "BusinessPartnerPerson")).filter(id -> !id.isBlank()).distinct().toList();
         PortalProperties.Service contactPerson = new PortalProperties.Service();
         contactPerson.setUrl(businessPartner.getUrl()); contactPerson.setEntity("A_BusinessPartner"); contactPerson.setExpand("to_BusinessPartnerAddress,to_BusinessPartnerAddress/to_EmailAddress,to_BusinessPartnerAddress/to_PhoneNumber");
@@ -349,6 +383,10 @@ public class PortalServiceImpl implements PortalService {
         return node.isArray() && !node.isEmpty() ? node.get(0) : null;
     }
     private List<JsonNode> loadDeliveryDocuments(String vendorId, String search, int top, List<JsonNode> orderLines) {
+        String orders = String.join(",", purchaseOrderIds(orderLines).stream().sorted().toList());
+        return vendorDataCache.get("deliveryDocuments", vendorId, "top=" + top + ";search=" + (search == null ? "" : search) + ";orders=" + orders, () -> loadDeliveryDocumentsUncached(vendorId, search, top, orderLines));
+    }
+    private List<JsonNode> loadDeliveryDocumentsUncached(String vendorId, String search, int top, List<JsonNode> orderLines) {
         boolean hasStandardOrders = orderLines.stream().anyMatch(line -> !isReturnPurchaseOrder(line));
         List<JsonNode> inbound;
         if (!hasStandardOrders) inbound = List.of();

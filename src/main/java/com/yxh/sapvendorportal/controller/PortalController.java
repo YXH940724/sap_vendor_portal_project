@@ -25,9 +25,9 @@ public class PortalController {
 
     @GetMapping("/health") public Map<String, Object> health() { return portalService.health(); }
     @GetMapping("/session") public Map<String, String> session(HttpServletRequest request) { return portalService.session(request); }
-    @GetMapping("/dashboard") public Map<String, Object> dashboard(HttpServletRequest request) { return portalService.dashboard(request); }
-    @GetMapping("/data/{resourceName}") public Map<String, Object> data(@PathVariable String resourceName, @RequestParam(defaultValue = "") String search, @RequestParam(defaultValue = "30") int top, HttpServletRequest request) { return portalService.data(resourceName, search, top, request); }
-    @GetMapping("/reconciliation") public Map<String, Object> reconciliation(HttpServletRequest request) { return portalService.reconciliation(request); }
+    @GetMapping("/dashboard") public Map<String, Object> dashboard(@RequestParam(defaultValue = "false") boolean refresh, HttpServletRequest request) { return portalService.dashboard(request, refresh); }
+    @GetMapping("/data/{resourceName}") public Map<String, Object> data(@PathVariable String resourceName, @RequestParam(defaultValue = "") String search, @RequestParam(defaultValue = "30") int top, @RequestParam(defaultValue = "false") boolean refresh, HttpServletRequest request) { return portalService.data(resourceName, search, top, request, refresh); }
+    @GetMapping("/reconciliation") public Map<String, Object> reconciliation(@RequestParam(defaultValue = "false") boolean refresh, HttpServletRequest request) { return portalService.reconciliation(request, refresh); }
     @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) { return portalService.createAsn(input, request); }
     @PostMapping("/invoices") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createInvoice(@RequestBody JsonNode input, HttpServletRequest request) { return portalService.createInvoice(input, request); }
 }

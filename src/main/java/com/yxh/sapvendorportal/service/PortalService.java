@@ -11,8 +11,11 @@ public interface PortalService {
     Map<String, Object> health();
     Map<String, String> session(HttpServletRequest request);
     Map<String, Object> dashboard(HttpServletRequest request);
+    default Map<String, Object> dashboard(HttpServletRequest request, boolean refresh) { return dashboard(request); }
     Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request);
+    default Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request, boolean refresh) { return data(resourceName, search, top, request); }
     Map<String, Object> reconciliation(HttpServletRequest request);
+    default Map<String, Object> reconciliation(HttpServletRequest request, boolean refresh) { return reconciliation(request); }
     Map<String, Object> createAsn(JsonNode input, HttpServletRequest request);
     Map<String, Object> createInvoice(JsonNode input, HttpServletRequest request);
     List<JsonNode> agentPurchaseOrders(String vendorId);

@@ -14,6 +14,7 @@ portal:
   auth-mode: ${PORTAL_AUTH_MODE:lark_bitable}
   vendor-id: ${PORTAL_VENDOR_ID:}
   identity-hmac-secret: ${PORTAL_IDENTITY_HMAC_SECRET:}
+  sap-cache-ttl-seconds: ${PORTAL_SAP_CACHE_TTL_SECONDS:120}
   bitable:
     app-id: ${LARK_APP_ID:}
     app-secret: ${LARK_APP_SECRET:}
@@ -41,7 +42,7 @@ portal:
       entity: PurchaseOrder
       supplier-field: Supplier
       # 打印采购订单时需要供应商地址；订单项目的收货方地址由 PurchaseOrderItem 的 _DeliveryAddress 获取。
-      expand: _PurchaseOrderItem,_SupplierAddress
+      expand: _SupplierAddress
     asn:
       url: ${SAP_ASN_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_INBOUND_DELIVERY_SRV;v=0002}
       entity: A_InbDeliveryHeader

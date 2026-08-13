@@ -7,6 +7,7 @@ public class PortalProperties {
     private String authMode = "lark_bitable";
     private String vendorId;
     private String identityHmacSecret;
+    private int sapCacheTtlSeconds = 120;
     private final Bitable bitable = new Bitable();
     private final Sap sap = new Sap();
     private final Ai ai = new Ai();
@@ -17,6 +18,8 @@ public class PortalProperties {
     public void setVendorId(String vendorId) { this.vendorId = vendorId; }
     public String getIdentityHmacSecret() { return identityHmacSecret; }
     public void setIdentityHmacSecret(String identityHmacSecret) { this.identityHmacSecret = identityHmacSecret; }
+    public int getSapCacheTtlSeconds() { return sapCacheTtlSeconds; }
+    public void setSapCacheTtlSeconds(int value) { sapCacheTtlSeconds = value; }
     public Bitable getBitable() { return bitable; }
     public Sap getSap() { return sap; }
     public Ai getAi() { return ai; }

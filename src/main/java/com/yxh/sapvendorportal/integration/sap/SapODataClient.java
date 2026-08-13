@@ -8,6 +8,8 @@ import com.yxh.sapvendorportal.config.PortalProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -25,6 +27,7 @@ import java.util.regex.Pattern;
 
 @Component
 public class SapODataClient {
+    private static final Logger log = LoggerFactory.getLogger(SapODataClient.class);
     private final PortalProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).connectTimeout(Duration.ofSeconds(10)).build();
@@ -166,7 +169,17 @@ public class SapODataClient {
         }
     }
     private JsonNode execute(HttpRequest request) { HttpResponse<String> response = send(request); if (response.statusCode() >= 400) throw sapError(response); try { return objectMapper.readTree(response.body()); } catch (Exception exception) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "SAP 返回了无法解析的响应。", exception); } }
-    private HttpResponse<String> send(HttpRequest request) { try { return httpClient.send(request, HttpResponse.BodyHandlers.ofString()); } catch (Exception exception) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "无法连接 SAP OData 服务。", exception); } }
+    private HttpResponse<String> send(HttpRequest request) {
+        long startedAt = System.nanoTime();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            log.debug("SAP OData {} {} -> {} ({} ms)", request.method(), request.uri().getPath(), response.statusCode(), (System.nanoTime() - startedAt) / 1_000_000L);
+            return response;
+        } catch (Exception exception) {
+            log.debug("SAP OData {} {} failed after {} ms", request.method(), request.uri().getPath(), (System.nanoTime() - startedAt) / 1_000_000L);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "无法连接 SAP OData 服务。", exception);
+        }
+    }
     private ResponseStatusException sapError(HttpResponse<String> response) { try { JsonNode error = objectMapper.readTree(response.body()).path("error"); String message = error.path("message").path("value").asText(error.path("message").asText("")); return new ResponseStatusException(HttpStatus.BAD_GATEWAY, sapErrorMessage(response.statusCode(), message)); } catch (Exception ignored) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, sapErrorMessage(response.statusCode(), "")); } }
     static String sapErrorMessage(int statusCode, String message) {
         String summary = message == null ? "" : message.replaceAll("[\\r\\n\\t]+", " ").trim();
