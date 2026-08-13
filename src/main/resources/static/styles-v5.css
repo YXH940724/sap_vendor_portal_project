@@ -69,6 +69,8 @@
 .analytics-grid.analytics-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
 .analytics-grid.analytics-grid-three > .card + .card { margin-top: 0; }
 .analytics-grid-three .chart-card { display: flex; min-height: 292px; flex-direction: column; }
+.analytics-grid-three .order-chart { border-top: 3px solid #008fd3; }
+.analytics-grid-three .shipping-chart { border-top: 3px solid #10b981; }
 .analytics-grid-three .chart-card > header { min-height: 62px; padding-bottom: 14px; border-bottom: 1px solid #e6edf4; }
 .analytics-grid-three .chart-card > header > span { display: block; margin-bottom: 4px; color: #5c83a8; font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .analytics-grid-three .chart-card h2 { margin: 0; color: #183c61; }

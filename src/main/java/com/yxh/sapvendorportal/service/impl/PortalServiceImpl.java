@@ -31,6 +31,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class PortalServiceImpl implements PortalService {
@@ -41,6 +43,7 @@ public class PortalServiceImpl implements PortalService {
     private static final Set<String> SETTLEMENT_REVERSAL_CANCELLATION_MOVEMENT_TYPES = Set.of("123");
     private static final Set<String> RETURN_MOVEMENT_TYPES = Set.of("161");
     private static final Set<String> RETURN_REVERSAL_MOVEMENT_TYPES = Set.of("162");
+    private static final Pattern ODATA_V2_DATE = Pattern.compile("^/Date\\((-?\\d+)(?:[+-]\\d+)?\\)/$");
     private final PortalProperties properties;
     private final VendorScopeResolver scopeResolver;
     private final SapODataClient sapClient;
@@ -199,7 +202,7 @@ public class PortalServiceImpl implements PortalService {
         return List.of(
                 rateMetric("供应商交付准时率", onTime, deliveryEligible,
                         "按时完成交付行 ÷ 已完成且具有交期与实际收货日期的订单行 × 100%",
-                        "实际收货日期取 SAP 收货凭证（101）的过账日期，并与订单交期比较。"),
+                        "实际收货日期取 SAP 收货凭证（101）的过账日期（无过账日期时取凭证日期），并与订单交期比较。"),
                 rateMetric("采购订单履约率", fulfilled, activeOrders.size(),
                         "已完成有效订单行 ÷ 全部有效订单行 × 100%",
                         "有效订单行不含已取消行；已完成取完全交付标识或已收货数量达到订单数量。")
@@ -232,9 +235,14 @@ public class PortalServiceImpl implements PortalService {
         return header == null ? null : parseBusinessDate(firstNonBlankText(header, "PostingDate", "DocumentDate"));
     }
     private LocalDate parseBusinessDate(String rawDate) {
-        if (rawDate == null || rawDate.length() < 10) return null;
-        try { return LocalDate.parse(rawDate.substring(0, 10)); }
+        if (rawDate == null || rawDate.isBlank()) return null;
+        Matcher sapV2Date = ODATA_V2_DATE.matcher(rawDate.trim());
+        try {
+            if (sapV2Date.matches()) return Instant.ofEpochMilli(Long.parseLong(sapV2Date.group(1))).atZone(ZoneOffset.UTC).toLocalDate();
+            if (rawDate.length() >= 10) return LocalDate.parse(rawDate.substring(0, 10));
+        }
         catch (Exception ignored) { return null; }
+        return null;
     }
     private boolean isActiveOrderLine(JsonNode order) {
         return firstText(order, "PurchasingDocumentDeletionCode").isBlank() && !normalizedStatus(firstText(order, "PurchaseOrderStatus")).contains("已取消");
