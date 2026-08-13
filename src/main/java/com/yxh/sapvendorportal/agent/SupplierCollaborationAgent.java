@@ -45,6 +45,7 @@ public class SupplierCollaborationAgent {
         ArrayNode messages = initialMessages(input.path("history"), question);
         ArrayNode tools = toolDefinitions();
         List<Map<String, String>> toolSummaries = new ArrayList<>();
+        List<String> executedToolNames = new ArrayList<>();
         String answer = "";
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             DeepSeekChatClient.Completion completion = deepSeek.complete(messages, tools);
@@ -55,6 +56,7 @@ public class SupplierCollaborationAgent {
             }
             for (DeepSeekChatClient.ToolCall call : completion.toolCalls()) {
                 ToolExecution execution = executeTool(call.name(), call.arguments(), scope.vendorId());
+                executedToolNames.add(call.name());
                 toolSummaries.add(Map.of("name", displayToolName(call.name()), "summary", execution.summary()));
                 ObjectNode toolResult = JsonNodeFactory.instance.objectNode();
                 toolResult.put("role", "tool");
@@ -63,7 +65,7 @@ public class SupplierCollaborationAgent {
                 messages.add(toolResult);
             }
         }
-        if (answer.isBlank()) answer = "已完成实时数据校验。创建 ASN：业务协同 → 采购订单 → 筛选并勾选订单行 → 基于已选行创建 ASN → 核对表单并提交。创建预制发票：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。";
+        if (answer.isBlank()) answer = fallbackAnswer(executedToolNames);
         return Map.of(
                 "content", answer,
                 "tools", toolSummaries,
@@ -87,6 +89,15 @@ public class SupplierCollaborationAgent {
         }
         messages.addObject().put("role", "user").put("content", question);
         return messages;
+    }
+
+    static String fallbackAnswer(Collection<String> toolNames) {
+        boolean asnDraft = toolNames.contains("prepare_asn_draft");
+        boolean invoiceDraft = toolNames.contains("prepare_invoice_draft");
+        if (asnDraft && invoiceDraft) return "已完成实时数据校验。创建 ASN：业务协同 → 采购订单 → 筛选并勾选订单行 → 基于已选行创建 ASN → 核对表单并提交。创建预制发票：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。";
+        if (asnDraft) return "已完成 ASN 可发运行校验。创建 ASN：业务协同 → 采购订单 → 筛选并勾选订单行 → 基于已选行创建 ASN → 核对表单并提交。";
+        if (invoiceDraft) return "已完成可结算收货行校验。创建预制发票：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。";
+        return "已完成实时数据校验。请根据上述单据结果继续处理。";
     }
 
     private ToolExecution executeTool(String name, String rawArguments, String vendorId) {

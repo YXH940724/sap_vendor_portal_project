@@ -3,6 +3,7 @@ package com.yxh.sapvendorportal.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,5 +17,13 @@ class AgentDefinitionLoaderTest {
         assertThat(StreamSupport.stream(loader.toolDefinitions().spliterator(), false)
                 .map(tool -> tool.path("function").path("name").asText()))
                 .containsExactly("query_purchase_orders", "query_goods_receipts", "query_asn_status", "query_settlement_candidates", "prepare_asn_draft", "prepare_invoice_draft", "prepare_print_document");
+    }
+
+    @Test
+    void limitsFallbackCreationGuidanceToTheRelevantDraftTool() {
+        assertThat(SupplierCollaborationAgent.fallbackAnswer(List.of("query_purchase_orders"))).doesNotContain("创建 ASN").doesNotContain("创建预制发票");
+        assertThat(SupplierCollaborationAgent.fallbackAnswer(List.of("prepare_asn_draft"))).contains("创建 ASN").doesNotContain("创建预制发票");
+        assertThat(SupplierCollaborationAgent.fallbackAnswer(List.of("prepare_invoice_draft"))).contains("创建预制发票").doesNotContain("创建 ASN：");
+        assertThat(SupplierCollaborationAgent.fallbackAnswer(List.of("prepare_asn_draft", "prepare_invoice_draft"))).contains("创建 ASN").contains("创建预制发票");
     }
 }

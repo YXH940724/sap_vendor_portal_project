@@ -3,6 +3,11 @@ server:
 spring:
   application:
     name: sap-vendor-portal
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-store: true
   jackson:
     default-property-inclusion: non_null
 portal:
