@@ -46,6 +46,7 @@ public class SupplierCollaborationAgent {
         ArrayNode tools = toolDefinitions();
         List<Map<String, String>> toolSummaries = new ArrayList<>();
         List<String> executedToolNames = new ArrayList<>();
+        List<String> executionContexts = new ArrayList<>();
         String answer = "";
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             DeepSeekChatClient.Completion completion = deepSeek.complete(messages, tools);
@@ -58,6 +59,8 @@ public class SupplierCollaborationAgent {
                 ToolExecution execution = executeTool(call.name(), call.arguments(), scope.vendorId());
                 executedToolNames.add(call.name());
                 toolSummaries.add(Map.of("name", displayToolName(call.name()), "summary", execution.summary()));
+                String context = executionContext(call.name(), execution.data());
+                if (!context.isBlank()) executionContexts.add(context);
                 ObjectNode toolResult = JsonNodeFactory.instance.objectNode();
                 toolResult.put("role", "tool");
                 toolResult.put("tool_call_id", call.id());
@@ -66,6 +69,7 @@ public class SupplierCollaborationAgent {
             }
         }
         if (answer.isBlank()) answer = fallbackAnswer(executedToolNames);
+        if (!executionContexts.isEmpty()) answer = answer + "\n\n" + String.join("\n\n", executionContexts);
         return Map.of(
                 "content", answer,
                 "tools", toolSummaries,
@@ -98,6 +102,53 @@ public class SupplierCollaborationAgent {
         if (asnDraft) return "已完成 ASN 可发运行校验。创建 ASN：业务协同 → 采购订单 → 筛选并勾选订单行 → 基于已选行创建 ASN → 核对表单并提交。";
         if (invoiceDraft) return "已完成可结算收货行校验。创建预制发票：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。";
         return "已完成实时数据校验。请根据上述单据结果继续处理。";
+    }
+
+    @SuppressWarnings("unchecked")
+    static String executionContext(String toolName, Map<String, Object> data) {
+        Object recordsValue = data.get("records");
+        if (!(recordsValue instanceof List<?> sourceRecords) || sourceRecords.isEmpty()) {
+            Object notice = data.containsKey("error") ? data.get("error") : data.getOrDefault("warning", "");
+            String error = notice == null ? "" : String.valueOf(notice).trim();
+            return error.isBlank() ? "" : "结果说明：" + error;
+        }
+        List<Map<String, Object>> records = sourceRecords.stream().filter(Map.class::isInstance).map(record -> (Map<String, Object>) record).toList();
+        if (records.isEmpty()) return "";
+        String title = switch (toolName) {
+            case "query_purchase_orders", "prepare_asn_draft" -> "采购订单明细";
+            case "query_goods_receipts" -> "收货凭证明细";
+            case "query_asn_status" -> "ASN / 送货单明细";
+            case "query_settlement_candidates", "prepare_invoice_draft" -> "收货结算明细";
+            case "prepare_print_document" -> "打印单据明细";
+            default -> "查询单据明细";
+        };
+        StringBuilder result = new StringBuilder(title).append("（").append(records.size()).append(" 条）：");
+        for (Map<String, Object> record : records) result.append("\n- ").append(contextRecord(toolName, record));
+        Object stepsValue = data.get("nextSteps");
+        if (stepsValue instanceof List<?> steps && !steps.isEmpty() && ("prepare_asn_draft".equals(toolName) || "prepare_invoice_draft".equals(toolName))) {
+            result.append("\n操作路径：");
+            int index = 1;
+            for (Object step : steps) result.append("\n").append(index++).append(". ").append(String.valueOf(step));
+        }
+        return result.toString();
+    }
+
+    private static String contextRecord(String toolName, Map<String, Object> record) {
+        return switch (toolName) {
+            case "query_purchase_orders", "prepare_asn_draft" -> "采购订单 " + field(record, "PurchaseOrder") + " / 行 " + field(record, "PurchaseOrderItem") + "：物料 " + field(record, "Material") + "，交期 " + field(record, "DeliveryDate") + "，订单数量 " + field(record, "OrderQuantity") + " " + field(record, "PurchaseOrderQuantityUnit") + "，可发运 " + field(record, "AsnAvailableQuantity");
+            case "query_goods_receipts" -> "收货凭证 " + field(record, "MaterialDocument") + " / 年度 " + field(record, "MaterialDocumentYear") + " / 项目 " + field(record, "MaterialDocumentItem") + "：采购订单 " + field(record, "PurchaseOrder") + "，物料 " + field(record, "Material") + "，移动类型 " + field(record, "GoodsMovementType") + "，数量 " + field(record, "QuantityInEntryUnit") + " " + field(record, "EntryUnit");
+            case "query_asn_status" -> "送货单 " + field(record, "DeliveryDocument") + "：" + field(record, "DeliveryDirection") + "，采购订单 " + field(record, "PurchaseOrder") + " / 行 " + field(record, "PurchaseOrderItem") + "，物料 " + field(record, "Material") + "，发运数量 " + field(record, "ActualDeliveryQuantity") + " " + field(record, "DeliveryQuantityUnit") + "，状态 " + field(record, "OverallStatus");
+            case "query_settlement_candidates", "prepare_invoice_draft" -> "收货凭证 " + field(record, "materialDocument") + " / 年度 " + field(record, "materialDocumentYear") + "：采购订单 " + field(record, "purchaseOrder") + " / 行 " + field(record, "purchaseOrderItem") + "，物料 " + field(record, "material") + "，可结算 " + field(record, "remainingQuantity") + " " + field(record, "unit") + "，状态 " + field(record, "settlementStatus");
+            default -> "单据 " + field(record, "PurchaseOrder", "DeliveryDocument", "materialDocument") + "：物料 " + field(record, "Material", "material") + "，状态 " + field(record, "PurchaseOrderStatus", "OverallStatus", "settlementStatus");
+        };
+    }
+
+    private static String field(Map<String, Object> record, String... names) {
+        for (String name : names) {
+            Object value = record.get(name);
+            if (value != null && !String.valueOf(value).isBlank()) return String.valueOf(value);
+        }
+        return "未提供";
     }
 
     private ToolExecution executeTool(String name, String rawArguments, String vendorId) {
