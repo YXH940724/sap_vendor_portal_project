@@ -51,7 +51,7 @@ public class PortalServiceImpl implements PortalService {
     public PortalServiceImpl(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
 
     public Map<String, Object> health() { String issue = properties.validationIssue(); return Map.of("ok", true, "configured", issue == null, "issue", issue == null ? "" : issue); }
-    public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "stateless_portal"); }
+    public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "lark_bitable".equals(scope.identitySource()) ? "signed_session" : "stateless_portal"); }
     public Map<String, Object> dashboard(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);

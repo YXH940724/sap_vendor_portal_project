@@ -6,7 +6,7 @@
     <meta name="description" content="SAP 供应商协同控制台" />
     <title>SAP 供应商协同控制台</title>
     <link rel="stylesheet" href="/styles-v4.css" />
-    <link rel="stylesheet" href="/styles-v5.css?v=20260813-5" />
+    <link rel="stylesheet" href="/styles-v5.css?v=20260813-6" />
   </head>
   <body>
     <section id="loginGate" class="login-gate" hidden aria-labelledby="loginTitle"><div class="login-ledger"><div class="login-brand"><span>▱</span><small>SUPPLIER PORTAL / ACCESS LEDGER</small></div><div class="login-copy"><p>供应商协同控制台</p><h1 id="loginTitle">进入您的<br /><em>SAP 协同工作台</em></h1><span>账号、供应商范围与操作权限由飞书多维表格统一维护。登录后仅可访问获授权的数据。</span></div><dl><div><dt>01</dt><dd>身份登录</dd></div><div><dt>02</dt><dd>范围校验</dd></div><div><dt>03</dt><dd>SAP 协同</dd></div></dl></div><form id="loginForm" class="login-card"><small>SUPPLIER SIGN IN</small><h2>账号登录</h2><p>请输入管理员在授权表中维护的登录账号与密码。</p><label>登录账号<input id="loginAccount" name="account" autocomplete="username" required placeholder="例如：vendor.operator" /></label><label>登录密码<input id="loginPassword" name="password" autocomplete="current-password" required type="password" placeholder="请输入密码" /></label><p id="loginMessage" class="login-message" role="status"></p><button class="btn btn-primary" type="submit">验证并进入工作台 <span>→</span></button><small class="login-note">密码仅用于即时校验，不会在浏览器中保存。</small></form></section>
@@ -18,7 +18,7 @@
           <div class="nav-group"><p>业务协同</p><button class="nav-item" data-route="purchaseOrders"><i>▤</i>采购订单</button><button class="nav-item" data-route="asns"><i>↗</i>ASN / 发运</button><button class="nav-item" data-route="materialDocuments"><i>▣</i>收货凭证</button><button class="nav-item" data-route="invoices"><i>▭</i>结算对账</button></div>
           <div class="nav-group"><p>基础数据</p><button class="nav-item" data-route="suppliers"><i>♧</i>供应商资料</button></div>
         </nav>
-        <div class="sidebar-footer"><span class="live-dot"></span><span>SAP 实时数据 · <b id="connectionLabel">检查中</b></span><small>v2.4 · S/4HANA</small></div>
+        <div class="sidebar-footer"><span class="live-dot"></span><span>SAP 实时数据 · <b id="connectionLabel">检查中</b></span><small>v2.5 · S/4HANA</small></div>
       </aside>
       <main class="main-panel">
         <header class="topbar"><button id="menuButton" class="menu-button" aria-label="展开导航">☰</button><div class="breadcrumb"><span>⌂</span><em>/</em><span id="vendorName">供应商工作空间</span><em>/</em><b id="breadcrumbPage">工作台</b></div><div class="topbar-actions"><span class="update-time">◷ 数据更新于 <b id="updateTime">刚刚</b></span><button id="refreshButton" class="btn btn-ghost">↻ 刷新数据</button><button id="logoutButton" class="btn btn-ghost" hidden>退出登录</button><div class="user-chip"><span>供</span><p><b id="portalUserName">供应商用户</b><small id="vendorScope">身份校验中</small></p></div></div></header>
@@ -39,6 +39,6 @@
       <div class="ai-shortcuts" aria-label="快捷问题"><button data-ai-prompt="今天我优先处理什么？">今日待办</button><button data-ai-prompt="查询待交货的采购订单">待交订单</button><button data-ai-prompt="查询可结算的收货凭证">可结算收货</button><button data-ai-prompt="我想创建 ASN，需要哪些订单行？">创建 ASN</button></div>
       <form id="aiChatForm" class="ai-composer"><label class="sr-only" for="aiChatInput">向供应商协同助手提问</label><textarea id="aiChatInput" rows="2" maxlength="2000" placeholder="例如：本周有哪些订单需要发运？"></textarea><div><small>仅查询当前供应商范围；写入 SAP 前仍需您确认。</small><button id="aiChatSend" class="ai-send" type="submit">发送 <span>↗</span></button></div></form>
     </aside>
-    <script type="module" src="/app.js?v=20260813-5"></script>
+    <script type="module" src="/app.js?v=20260813-6"></script>
   </body>
 </html>
