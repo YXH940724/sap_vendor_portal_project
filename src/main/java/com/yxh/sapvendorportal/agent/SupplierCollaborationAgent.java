@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yxh.sapvendorportal.api.PortalController;
-import com.yxh.sapvendorportal.security.VendorScopeResolver;
+import com.yxh.sapvendorportal.common.security.VendorScopeResolver;
+import com.yxh.sapvendorportal.service.PortalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,11 +24,11 @@ public class SupplierCollaborationAgent {
     private static final int MAX_HISTORY_MESSAGES = 8;
     private static final int MAX_TOOL_ROUNDS = 3;
     private final DeepSeekChatClient deepSeek;
-    private final PortalController portal;
+    private final PortalService portal;
     private final ObjectMapper objectMapper;
     private final AgentDefinitionLoader definitions;
 
-    public SupplierCollaborationAgent(DeepSeekChatClient deepSeek, PortalController portal, ObjectMapper objectMapper, AgentDefinitionLoader definitions) {
+    public SupplierCollaborationAgent(DeepSeekChatClient deepSeek, PortalService portal, ObjectMapper objectMapper, AgentDefinitionLoader definitions) {
         this.deepSeek = deepSeek;
         this.portal = portal;
         this.objectMapper = objectMapper;

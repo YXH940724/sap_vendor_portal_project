@@ -1,4 +1,4 @@
-package com.yxh.sapvendorportal.sap;
+package com.yxh.sapvendorportal.integration.sap;
 
 import com.yxh.sapvendorportal.config.PortalProperties;
 import org.springframework.web.server.ResponseStatusException;

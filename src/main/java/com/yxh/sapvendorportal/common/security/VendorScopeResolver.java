@@ -1,4 +1,4 @@
-package com.yxh.sapvendorportal.security;
+package com.yxh.sapvendorportal.common.security;
 
 import com.yxh.sapvendorportal.config.PortalProperties;
 import jakarta.servlet.http.HttpServletRequest;

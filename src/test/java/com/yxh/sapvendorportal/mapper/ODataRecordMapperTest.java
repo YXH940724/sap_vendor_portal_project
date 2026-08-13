@@ -1,4 +1,4 @@
-package com.yxh.sapvendorportal.api;
+package com.yxh.sapvendorportal.mapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;

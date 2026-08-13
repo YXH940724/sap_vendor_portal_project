@@ -1,15 +1,17 @@
-package com.yxh.sapvendorportal.api;
+package com.yxh.sapvendorportal.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yxh.sapvendorportal.common.security.VendorScopeResolver;
 import com.yxh.sapvendorportal.config.PortalProperties;
-import com.yxh.sapvendorportal.sap.SapODataClient;
-import com.yxh.sapvendorportal.security.VendorScopeResolver;
+import com.yxh.sapvendorportal.integration.sap.SapODataClient;
+import com.yxh.sapvendorportal.mapper.ODataRecordMapper;
+import com.yxh.sapvendorportal.service.PortalService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -26,9 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-@RestController
-@RequestMapping("/api")
-public class PortalController {
+@Service
+public class PortalServiceImpl implements PortalService {
     private static final DateTimeFormatter PORTAL_ASN_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private static final Set<String> GOODS_RECEIPT_MOVEMENT_TYPES = Set.of("101", "102", "122", "123", "161", "162");
     private static final Set<String> SETTLEMENT_RECEIPT_MOVEMENT_TYPES = Set.of("101");
@@ -47,11 +48,11 @@ public class PortalController {
             "materialDocuments", new Resource("materialDocument", "MaterialDocument", "MaterialDocument desc"),
             "invoices", new Resource("supplierInvoice", "SupplierInvoice", "SupplierInvoice desc")
     );
-    public PortalController(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
+    public PortalServiceImpl(PortalProperties properties, VendorScopeResolver scopeResolver, SapODataClient sapClient, ODataRecordMapper recordMapper) { this.properties = properties; this.scopeResolver = scopeResolver; this.sapClient = sapClient; this.recordMapper = recordMapper; }
 
-    @GetMapping("/health") public Map<String, Object> health() { String issue = properties.validationIssue(); return Map.of("ok", true, "configured", issue == null, "issue", issue == null ? "" : issue); }
-    @GetMapping("/session") public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "stateless_portal"); }
-    @GetMapping("/dashboard") public Map<String, Object> dashboard(HttpServletRequest request) {
+    public Map<String, Object> health() { String issue = properties.validationIssue(); return Map.of("ok", true, "configured", issue == null, "issue", issue == null ? "" : issue); }
+    public Map<String, String> session(HttpServletRequest request) { var scope = scopeResolver.resolve(request); return Map.of("vendorId", scope.vendorId(), "identitySource", scope.identitySource(), "storage", "stateless_portal"); }
+    public Map<String, Object> dashboard(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         LoadResult ordersResult = safelyLoad("purchaseOrders", scope.vendorId(), "", 100, List.of());
@@ -78,12 +79,12 @@ public class PortalController {
         result.put("retrievedAt", Instant.now().toString());
         return result;
     }
-    @GetMapping("/data/{resourceName}") public Map<String, Object> data(@PathVariable String resourceName, @RequestParam(defaultValue = "") String search, @RequestParam(defaultValue = "30") int top, HttpServletRequest request) {
+    public Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request) {
         requireConfigured(); Resource resource = resources.get(resourceName); if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
         var scope = scopeResolver.resolve(request); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
         Map<String, Object> response = new LinkedHashMap<>(); response.put("resource", resourceName); response.put("vendorId", scope.vendorId()); response.put("records", records); response.put("count", records.size()); response.put("retrievedAt", Instant.now().toString()); return response;
     }
-    @GetMapping("/reconciliation") public Map<String, Object> reconciliation(HttpServletRequest request) {
+    public Map<String, Object> reconciliation(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream()
@@ -91,7 +92,7 @@ public class PortalController {
                 .map(ReconciliationLine::view).toList();
         return Map.of("vendorId", scope.vendorId(), "records", records, "count", records.size(), "retrievedAt", Instant.now().toString());
     }
-    @PostMapping("/asns") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createAsn(@RequestBody JsonNode input, HttpServletRequest request) {
+    public Map<String, Object> createAsn(JsonNode input, HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         ObjectNode submission = input instanceof ObjectNode object ? object.deepCopy() : JsonNodeFactory.instance.objectNode();
@@ -107,7 +108,7 @@ public class PortalController {
         response.put("result", sapResult);
         return response;
     }
-    @PostMapping("/invoices") @ResponseStatus(HttpStatus.CREATED) public Map<String, Object> createInvoice(@RequestBody JsonNode input, HttpServletRequest request) {
+    public Map<String, Object> createInvoice(JsonNode input, HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
         ObjectNode validated = validateAndBuildInvoice(input, scope.vendorId());

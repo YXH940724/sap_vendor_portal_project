@@ -1,4 +1,4 @@
-package com.yxh.sapvendorportal.sap;
+package com.yxh.sapvendorportal.integration.sap;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

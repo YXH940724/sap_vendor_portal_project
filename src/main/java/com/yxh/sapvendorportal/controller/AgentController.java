@@ -1,7 +1,8 @@
-package com.yxh.sapvendorportal.agent;
+package com.yxh.sapvendorportal.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yxh.sapvendorportal.security.VendorScopeResolver;
+import com.yxh.sapvendorportal.agent.SupplierCollaborationAgent;
+import com.yxh.sapvendorportal.common.security.VendorScopeResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

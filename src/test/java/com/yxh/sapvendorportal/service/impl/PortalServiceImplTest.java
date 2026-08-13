@@ -1,10 +1,11 @@
-package com.yxh.sapvendorportal.api;
+package com.yxh.sapvendorportal.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yxh.sapvendorportal.common.security.VendorScopeResolver;
 import com.yxh.sapvendorportal.config.PortalProperties;
-import com.yxh.sapvendorportal.sap.SapODataClient;
-import com.yxh.sapvendorportal.security.VendorScopeResolver;
+import com.yxh.sapvendorportal.integration.sap.SapODataClient;
+import com.yxh.sapvendorportal.mapper.ODataRecordMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,7 +25,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class PortalControllerTest {
+class PortalServiceImplTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -42,7 +43,7 @@ class PortalControllerTest {
             return "PurchaseOrderItem".equals(service.getEntity()) ? List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"00010\"}")) : List.of();
         });
         when(sapClient.createAsn(eq("133000006"), any())).thenReturn(objectMapper.readTree("{\"d\":{\"DeliveryDocument\":\"1800000999\"}}"));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.createAsn(objectMapper.readTree("""
                 {"portalAsnNumber":"PASN-20260806000000-ABC12345","items":[
@@ -72,7 +73,7 @@ class PortalControllerTest {
             if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001010\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":20,\"StillToBeDeliveredQuantity\":12,\"IsCompletelyDelivered\":true}"));
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000010\",\"PurchaseOrder\":\"4500001010\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":8}"));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class)).get("records");
 
@@ -103,7 +104,7 @@ class PortalControllerTest {
                     """));
             return List.of();
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<JsonNode> records = (List<JsonNode>) controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class)).get("records");
 
@@ -131,7 +132,7 @@ class PortalControllerTest {
             if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001011\",\"PurchaseOrderItem\":\"00010\",\"OrderQuantity\":5,\"IsReturnsItem\":true}"));
             return List.of();
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         assertThatThrownBy(() -> controller.createAsn(objectMapper.readTree("{\"items\":[{\"sourcePurchaseOrder\":\"4500001011\",\"sourcePurchaseOrderItem\":\"00010\",\"quantity\":1}]}"), mock(HttpServletRequest.class)))
                 .isInstanceOf(ResponseStatusException.class).satisfies(error -> assertThat(((ResponseStatusException) error).getReason()).contains("退货订单行不能创建 ASN"));
@@ -155,7 +156,7 @@ class PortalControllerTest {
             if ("A_OutbDeliveryItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"DeliveryDocument\":\"8000000999\",\"DeliveryDocumentItem\":\"000010\",\"ReferenceSDDocument\":\"4500001099\",\"ReferenceSDDocumentItem\":\"00010\",\"Material\":\"RET-01\",\"ActualDeliveryQuantity\":2,\"DeliveryQuantityUnit\":\"EA\",\"OverallGoodsMovementStatus\":\"A\"}"));
             return List.of();
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<JsonNode> records = (List<JsonNode>) controller.data("asns", "", 30, mock(HttpServletRequest.class)).get("records");
 
@@ -178,7 +179,7 @@ class PortalControllerTest {
             if ("A_SupplierCompany".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"Supplier\":\"133000006\",\"CompanyCode\":\"1000\",\"CompanyCodeName\":\"示例公司\",\"Currency\":\"CNY\",\"PaymentTerms\":\"0001\",\"PaymentMethodsList\":\"T\"}"));
             return List.of();
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("suppliers", "", 30, mock(HttpServletRequest.class)).get("records");
 
@@ -213,7 +214,7 @@ class PortalControllerTest {
                      "to_BusinessPartnerAddress":{"results":[{"to_EmailAddress":{"results":[{"EmailAddress":"contact@example.com"}]},"to_PhoneNumber":{"results":[{"PhoneNumber":"13800000000"}]}}]}}
                     """));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<com.fasterxml.jackson.databind.JsonNode> records = (List<com.fasterxml.jackson.databind.JsonNode>) controller.data("suppliers", "", 30, mock(HttpServletRequest.class)).get("records");
 
@@ -246,7 +247,7 @@ class PortalControllerTest {
             if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500001012\",\"PurchaseOrderItem\":\"00010\",\"PurchasingItemIsFreeOfCharge\":true,\"PurchaseOrderQuantityUnit\":\"EA\"}"));
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000012\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001012\",\"PurchaseOrderItem\":\"00010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":5,\"EntryUnit\":\"EA\"}"));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         @SuppressWarnings("unchecked") List<Map<String, Object>> records = (List<Map<String, Object>>) controller.reconciliation(mock(HttpServletRequest.class)).get("records");
 
@@ -268,7 +269,7 @@ class PortalControllerTest {
             }
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\"}"));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.data("materialDocuments", "", 30, mock(HttpServletRequest.class));
         @SuppressWarnings("unchecked")
@@ -300,7 +301,7 @@ class PortalControllerTest {
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000003\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"102\",\"QuantityInEntryUnit\":3}"),
                     objectMapper.readTree("{\"MaterialDocument\":\"5000000004\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"122\",\"QuantityInEntryUnit\":1}"));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class));
         @SuppressWarnings("unchecked")
@@ -338,7 +339,7 @@ class PortalControllerTest {
         });
         when(sapClient.getByReferences(any(), anyList(), eq("Product"), anyString(), anyInt()))
                 .thenReturn(List.of(objectMapper.readTree("{\"Product\":\"COMP-01\",\"ProductDescription\":\"外协组件物料描述\"}")));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class));
         @SuppressWarnings("unchecked")
@@ -381,7 +382,7 @@ class PortalControllerTest {
             }
             return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000000001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500001001\",\"PurchaseOrderItem\":\"000010\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":10,\"EntryUnit\":\"EA\"}"));
         });
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.reconciliation(mock(HttpServletRequest.class));
         @SuppressWarnings("unchecked")
@@ -402,7 +403,7 @@ class PortalControllerTest {
         SapODataClient sapClient = reconciliationClient();
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
                 {"invoiceReference":"SUP-INV-001","documentDate":"2026-08-03","postingDate":"2026-08-03","netAmount":70,"grossAmount":77,"taxAmount":7,"items":[
                   {"receiptKey":"5000000001:2026:1","quantity":7}
@@ -420,7 +421,7 @@ class PortalControllerTest {
         SapODataClient sapClient = reconciliationClient();
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
                 {"invoiceReference":"SUP-INV-002","documentDate":"2026-08-03","postingDate":"2026-08-03",
                  "netAmount":60,"grossAmount":80,"taxAmount":10,"headerText":"八月收货结算","items":[
@@ -440,7 +441,7 @@ class PortalControllerTest {
         when(sapClient.createSupplierInvoice(anyString(), any())).thenReturn(objectMapper.createObjectNode());
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
         JsonNode input = objectMapper.readTree("""
                 {"invoiceReference":"SUP-INV-003","documentDate":"2026-08-03","postingDate":"2026-08-03",
                  "netAmount":60,"taxAmount":0,"grossAmount":60,"items":[
@@ -458,7 +459,7 @@ class PortalControllerTest {
         SapODataClient sapClient = reconciliationClient(true);
         VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
-        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+        PortalServiceImpl controller = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
 
         Map<String, Object> response = controller.reconciliation(mock(HttpServletRequest.class));
         @SuppressWarnings("unchecked")
