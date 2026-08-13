@@ -1,105 +1,149 @@
-# SAP 供应商协同 Portal（Java）
+# SAP 供应商协同 Portal
 
-面向 SAP PE/ES 的轻量级供应商 Portal 初版，后端使用 **Java 21 + Spring Boot 3**。它以 **SAP 标准 OData API** 为业务数据源，覆盖供应商主数据、采购订单、ASN、物料凭证、发票/结算对账的实时查询入口。
+面向供应商的 SAP S/4HANA 协同门户。系统以当前登录供应商的授权范围为边界，聚合采购订单、ASN/送货单、收货凭证、供应商发票与供应商主数据，并提供创建 ASN、创建预制发票、单据打印、数据看板和 AI 协同助手。
 
-## 架构原则
+本项目不保存 SAP 业务数据，也不包含本地业务数据库：运行时通过服务端调用 SAP OData，供应商账号与授权范围由飞书多维表格维护。
 
-- **无 Portal 业务数据库**：不复制 SAP 主数据、订单、收货或结算数据。
-- **凭据不出服务端**：SAP 用户名、密码或 Bearer Token 仅由 Java 服务端从 `.env` 或部署环境读取；浏览器永远不直接访问 SAP。
-- **供应商范围强制隔离**：后端为每个请求强制注入供应商过滤条件，缺少实体集或供应商字段配置时直接拒绝调用。
-- **身份与权限外置**：生产环境应由企业 IAM/CIAM 使用 OIDC/SAML 完成账号、密码、MFA 和权限管理。Portal 不保存密码、权限表或 MFA 密钥。
+## 功能清单
+
+| 模块 | 已实现能力 |
+| --- | --- |
+| 供应商登录与范围控制 | 飞书多维表格账号、BCrypt 密码哈希、启停与有效期校验；供应商、采购组织、公司代码、工厂、权限范围控制。也支持由企业身份代理签名供应商范围。 |
+| 工作台与数据看板 | 订单、发运、结算状态汇总；供应商交付准时率、采购订单履约率及公开计算口径。 |
+| 采购订单 | 查询、搜索、订单状态与免费/外协/退货等类型识别；组合计算已收货、未清 ASN、可发运量；外协组件及物料描述补充。 |
+| ASN / 发运 | 查询内向交货单；退货采购订单查询外向送货单；创建 ASN 前进行订单范围、完成状态、退货与可发运量校验。 |
+| 收货与结算 | 查询物料凭证；按移动类型计算净收货；关联收货、订单、发票计算可结算、已结算及剩余结算数量。 |
+| 预制发票 | 根据已选可结算收货行创建 SAP 供应商预制发票；校验金额、税额、数量、公司代码、币种和实时可结算量。 |
+| 供应商资料 | 显示基础资料、地址、邮箱、电话、联系人、银行、公司代码结算信息及税号。 |
+| 打印 | 在浏览器中按采购订单或 ASN 生成打印视图；同一次打印不合并不同订单。 |
+| AI 协同助手 | 当前供应商范围内的待办、订单、收货、ASN、结算查询及创建/打印操作指引；模型工具调用受限于白名单，不直接写入 SAP。 |
+| 性能与一致性 | 供应商隔离的短期缓存、并发请求合并；刷新、创建 ASN、创建发票后清理相关缓存。 |
+
+## 技术栈
+
+- Java 21、Spring Boot 3.4.5、Maven
+- Spring Web、Spring Validation、Spring Security Crypto（BCrypt）
+- 原生 HTML/CSS/JavaScript 静态前端（无 Node.js 构建步骤）
+- SAP S/4HANA OData V2 / V4
+- 飞书多维表格开放 API（登录与授权）
+- DeepSeek OpenAI 兼容 Chat Completions API（可选 AI 功能）
+
+## 环境要求
+
+- JDK 21
+- Maven 3.9+（或可用的 Maven Wrapper；本仓库当前未提供 Wrapper）
+- 可访问 SAP OData、飞书开放 API；启用 AI 时还需可访问 AI 服务
+- 一个维护“Portal 登录授权”记录的飞书多维表格，及已授权读取该表的飞书应用
 
 ## 本地启动
 
-```bash
-cp .env.example .env
-# 在 .env 中填写 SAP_USERNAME、SAP_PASSWORD、PORTAL_VENDOR_ID 和 DEEPSEEK_API_KEY
-mvn spring-boot:run
-```
+1. 进入项目根目录并更新稳定版本。
 
-访问 <http://localhost:3000>。
+   ```bash
+   cd /Users/Yexinghui/sap_vendor_portal_project/sap_vendor_portal_project
+   git fetch origin --prune
+   git switch main
+   git pull --ff-only origin main
+   ```
 
-> 请勿将 `.env`、SAP 凭据、Token 或身份代理密钥提交到 Git。
+2. 创建本地环境文件。`.env` 不应提交到 Git。
 
-## 供应商协同 AI 助手
+   ```bash
+   cp .env.example .env
+   ```
 
-工作台右下角提供“供应商协同助手”。后端通过 DeepSeek Chat Completions 的 Function Calling 调用受控业务工具，支持当前供应商范围内的采购订单、ASN/发运、收货结算查询，以及 ASN/预制发票草稿依据生成。
+3. 在 `.env` 填写飞书登录、SAP 连接信息。启用 AI 时再填写 `DEEPSEEK_API_KEY`。请勿把密码、Token、应用密钥写入 README 或提交到仓库。
 
-- 配置：在 `.env` 设置 `DEEPSEEK_API_KEY`；可选设置 `DEEPSEEK_MODEL`（默认 `deepseek-v4-flash`）和 `DEEPSEEK_BASE_URL`。
-- 模型说明：DeepSeek 的 `deepseek-chat` 曾指向 V3，但官方已公告该旧别名于 2026-07-24 停止服务；因此默认使用支持 Tool Calls 的 `deepseek-v4-flash`。如企业 DeepSeek 网关仍提供 V3 兼容模型，可仅覆盖 `DEEPSEEK_MODEL`，无需修改代码。
-- 边界：大模型只能理解问题、选择工具和组织回答；数量、金额、状态和供应商隔离均由 Java 服务端按 SAP 实时数据校验。
-- 写入：AI 仅生成草稿依据，ASN 与预制发票仍通过 Portal 表单由用户确认后提交，并执行既有服务端校验。
-- 安全：浏览器不接触 DeepSeek 或 SAP 密钥；`vendorId` 从服务端登录范围注入，模型与前端均不能覆盖。
-- 独立维护：运行时行为规则位于 `src/main/resources/ai/skills/supplier-collaboration-agent.md`，MCP 工具目录位于 `src/main/resources/ai/mcp-tools.json`；维护说明位于 `.codex/skills/supplier-collaboration-agent/SKILL.md`。调整后运行 `mvn test` 并重启服务。新增工具仍必须同步实现受控后端处理器和测试，不能仅修改 JSON 声明。
+4. 启动并访问 `http://localhost:3000`。
 
-## 配置 SAP OData
+   ```bash
+   mvn spring-boot:run
+   ```
 
-### 性能与数据刷新
+应用启动日志出现 `Tomcat started on port 3000` 和 `Started SapVendorPortalApplication` 后，进程保持运行是正常现象；用 `Ctrl+C` 停止。
 
-Portal 会按供应商编码隔离并缓存 SAP 读取结果，默认有效期为 120 秒；同一供应商在工作台、订单、ASN、收货、对账与 AI 查询间会复用短期快照，并合并并发的相同读取请求。页面上的“刷新数据”会携带强制刷新标识，立即清空当前供应商缓存；成功创建 ASN 或预制发票后也会自动清空对应缓存。因此缓存不会跨供应商泄露，也不会覆盖用户主动刷新或写入后的实时校验。
+### 最小环境变量
 
-可在 `.env` 调整，设为 `0` 可完全关闭服务端缓存：
+默认认证模式为飞书多维表格登录：
 
-```bash
-PORTAL_SAP_CACHE_TTL_SECONDS=120
-```
-
-`.env.example` 已写入本次提供的 5 个服务根地址；标准实体集和供应商隔离字段由 Portal 固定处理，无需逐项配置。创建 ASN 前，Portal 会读取 SAP `$metadata`，确认目标实体集存在且允许创建。
-
-如租户确认写入实体集不是 `A_InbDeliveryHeader`，可额外设置 `SAP_ASN_CREATE_PATH`；如供应商字段不是 `Supplier`，可设置 `SAP_ASN_CREATE_VENDOR_FIELD`。这两个配置仅用于租户扩展，不影响默认标准 API。
-
-## 飞书多维表格账号与权限管理
-
-当前项目支持将飞书多维表格作为轻量授权中心。已在指定 Base `Vendor Portal Authorizaiton Configuration` 内创建 **Portal 登录授权** 表（表 ID：`tblmCxjQzBxZpIDi`）。每一行代表一个可登录供应商账号及其唯一供应商范围。
-
-启用方式：
-
-```bash
+```dotenv
+PORT=3000
 PORTAL_AUTH_MODE=lark_bitable
 LARK_APP_ID=cli_xxx
 LARK_APP_SECRET=***
-LARK_BITABLE_APP_TOKEN=Ta7pbhUwGakUgXsZMHEcuHprnpc
-LARK_BITABLE_LOGIN_TABLE_ID=tblmCxjQzBxZpIDi
-PORTAL_SESSION_SECRET=使用高强度随机字符串
+LARK_BITABLE_APP_TOKEN=***
+LARK_BITABLE_LOGIN_TABLE_ID=***
+PORTAL_SESSION_SECRET=***
+SAP_AUTH_MODE=basic
+SAP_USERNAME=***
+SAP_PASSWORD=***
 ```
 
-飞书应用需使用**应用身份**具备目标多维表格的读取权限。Portal 仅由服务端调用飞书 OpenAPI，浏览器不会取得飞书应用密钥或 Base 数据。
+可选项：`PORTAL_SAP_CACHE_TTL_SECONDS`（默认 120 秒）、`PORTAL_SESSION_TTL_MINUTES`（默认 480 分钟）、`AI_ENABLED`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`。完整变量及默认服务地址见 [`.env.example`](.env.example) 与 [`application.yaml`](src/main/resources/application.yaml)。系统环境变量或 JVM 属性优先于当前目录的 `.env`。
 
-在“Portal 登录授权”表新增账号时，维护：`登录账号`、`密码哈希`、`供应商编码`、`状态=启用`，并按需维护采购组织、公司代码、工厂与权限。一个账号可拥有多个采购组织、公司代码及工厂：建议将这三个字段改为“多选”字段，每个授权范围单独作为一个选项；Portal 同时兼容现有文本字段，文本字段请用英文逗号分隔，例如 `1000,2000`，不要用空格或顿号。密码哈希必须是 BCrypt 格式（以 `$2a$`、`$2b$` 或 `$2y$` 开头），禁止填写明文密码。管理员可在本地生成哈希（命令执行后只输出哈希，不保存密码）：
+### 飞书授权表字段
+
+登录表需要包含下列字段名：`登录账号`、`密码哈希`、`供应商编码`、`供应商名称`、`状态`、`生效日期`、`失效日期`、`采购组织`、`公司代码`、`工厂`、`权限`。
+
+- `状态` 必须为“启用”。
+- `密码哈希` 必须为 BCrypt 格式；可通过 `PasswordHashTool` 生成，不能保存明文密码。
+- 采购组织、公司代码、工厂与权限均支持多选数组或逗号分隔文本。
+- 常用权限：`ORDER_READ`、`ASN_READ`、`ASN_CREATE`、`GOODS_RECEIPT_READ`、`SETTLEMENT_READ`、`INVOICE_CREATE`、`SUPPLIER_PROFILE_READ`、`AI_QUERY`。
+
+## 接口测试说明
+
+应用启动后可先检查配置：
 
 ```bash
-mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
-  -Dexec.mainClass=com.yxh.sapvendorportal.common.utils.PasswordHashTool \
-  -Dexec.args='请替换为实际密码'
+curl -s http://localhost:3000/api/health
+curl -s http://localhost:3000/api/auth/session
 ```
 
-账号密码、哈希和应用密钥都不应提交到 Git。AI 助手在每次登录/供应商切换时都会清空浏览器对话上下文；服务端每次 AI 请求都从当前登录会话解析供应商编码，不读取 `.env` 中的固定供应商。
+飞书登录模式下，使用 Cookie 文件保持会话：
 
-可选权限包括：`ORDER_READ`、`ASN_READ`、`ASN_CREATE`、`GOODS_RECEIPT_READ`、`SETTLEMENT_READ`、`INVOICE_CREATE`、`PRINT`、`SUPPLIER_PROFILE_READ`、`AI_QUERY`。登录后，Portal 以 HttpOnly、SameSite=Strict 会话 Cookie 绑定该账号，所有 SAP 查询强制使用授权记录中的供应商编码；未授予的页面、ASN 创建、预制发票创建与 AI 查询会被服务端拒绝。
+```bash
+curl -i -c cookies.txt -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"account":"供应商账号","password":"你的密码"}'
 
-## 企业身份代理模式（可选）
-
-Portal 默认且推荐使用飞书多维表格登录。已取消 `single_vendor` 固定供应商模式，浏览器访问必须先完成供应商登录，供应商范围仅来自已登录账号的授权记录。企业如已具备 IAM/CIAM，可改为身份代理模式：
-
-```text
-供应商 → 企业 IAM/CIAM（登录/MFA） → 身份代理（签名供应商范围） → Portal → SAP OData
+curl -s -b cookies.txt http://localhost:3000/api/dashboard
+curl -s -b cookies.txt 'http://localhost:3000/api/data/purchaseOrders?top=10'
+curl -s -b cookies.txt 'http://localhost:3000/api/reconciliation?refresh=true'
 ```
 
-设置 `PORTAL_AUTH_MODE=proxy_hmac` 与 `PORTAL_IDENTITY_HMAC_SECRET` 后，身份代理需要在每个请求加入：
-
-- `X-Portal-Vendor-Id`
-- `X-Portal-Timestamp`（毫秒时间戳，5 分钟有效）
-- `X-Portal-Signature`：`HMAC-SHA256(vendorId.timestamp)`
-
-实际项目中应由 IAM 权益管理系统维护“用户—LIFNR—采购组织/公司代码/工厂”映射，身份代理校验 JWT 后生成上述签名请求头。Portal 仅校验身份代理签名并把范围用于 OData 过滤。
-
-## 已实现与后续工作
-
-- 已实现：Java Spring Boot 服务端 OData 代理、V2/V4 响应兼容、供应商范围过滤、防止未配置范围时全量查询、供应商/PO/ASN/物料凭证/发票页面，以及 ASN 写接口的 CSRF 和 `$metadata` 预检流程。
-- 后续需 SAP 团队确认：各服务的业务字段、GR/IR 与付款状态服务、ASN 创建权限及发运字段映射、错误码与分页策略。
-
-## 验证
+执行自动化测试：
 
 ```bash
 mvn test
 ```
+
+完整接口定义、请求示例与错误说明见 [API 接口文档](docs/API.md)。
+
+## 项目结构
+
+```text
+.
+├── .env.example                     # 环境变量模板
+├── pom.xml                          # Maven 依赖与构建配置
+├── docs/                            # 交付文档
+├── src/main/java/com/yxh/sapvendorportal/
+│   ├── SapVendorPortalApplication.java # 启动类
+│   ├── agent/                       # AI 对话、模型客户端、工具编排
+│   ├── common/                      # 缓存、异常、统一错误、范围安全、工具
+│   ├── config/                      # .env 装载与配置属性
+│   ├── controller/                  # HTTP API
+│   ├── integration/                 # 飞书与 SAP OData 客户端
+│   ├── mapper/                      # SAP OData 记录标准化映射
+│   └── service/                     # 登录和业务服务实现
+├── src/main/resources/
+│   ├── ai/                          # AI Skill 与 MCP 工具白名单
+│   ├── application.yaml             # Spring Boot 配置
+│   └── static/                      # 单页前端资源
+└── src/test/java/                   # 单元与集成测试
+```
+
+## 交付文档
+
+- [完整 API 接口文档](docs/API.md)
+- [数据库与外部数据结构说明](docs/DATABASE.md)
+- [部署与运维文档](docs/DEPLOYMENT.md)
