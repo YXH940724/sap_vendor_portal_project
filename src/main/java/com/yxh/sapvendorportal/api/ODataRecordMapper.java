@@ -33,7 +33,7 @@ public class ODataRecordMapper {
         List<JsonNode> rows = new ArrayList<>();
         for (JsonNode item : items) {
             ObjectNode row = copy(item);
-            copyIfMissing(row, header, "PurchaseOrder", "Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency");
+            copyIfMissing(row, header, "PurchaseOrder", "Supplier", "SupplierName", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency");
             JsonNode scheduleLines = firstArray(item, "_PurchaseOrderScheduleLineTP", "_PurchaseOrderScheduleLine", "to_PurchaseOrderScheduleLine");
             if (scheduleLines != null && !scheduleLines.isEmpty()) copyIfMissing(row, scheduleLines.get(0), "ScheduleLineDeliveryDate", "DeliveryDate", "StatDeliveryDate");
             rows.add(normalize("purchaseOrders", row));

@@ -291,10 +291,11 @@ public class PortalController {
         if (!item.isObject()) return item;
         ObjectNode result = ((ObjectNode) item).deepCopy();
         if (header != null) {
-            for (String field : List.of("Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency")) {
+            for (String field : List.of("Supplier", "SupplierName", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency")) {
                 if (!result.has(field) && header.has(field)) result.set(field, header.get(field));
             }
             copyAddress(result, header, "_SupplierAddress", "SupplierAddress");
+            copySupplierName(result, header);
         }
         copyAddress(result, result, "_DeliveryAddress", "DeliveryAddress");
         return result;
@@ -310,7 +311,7 @@ public class PortalController {
     private JsonNode enrichWithPurchaseOrderItem(JsonNode record, JsonNode orderLine) {
         if (orderLine == null || !record.isObject()) return record;
         ObjectNode result = ((ObjectNode) record).deepCopy();
-        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "ReturnsItem", "ReturnsIndicator", "IsCompletelyDelivered", "OrderType", "SupplierAddressStreetName", "SupplierAddressHouseNumber", "SupplierAddressBuilding", "SupplierAddressFloor", "SupplierAddressRoomNumber", "SupplierAddressPostalCode", "SupplierAddressCityName", "SupplierAddressRegion", "SupplierAddressCountry", "DeliveryAddressStreetName", "DeliveryAddressHouseNumber", "DeliveryAddressBuilding", "DeliveryAddressFloor", "DeliveryAddressRoomNumber", "DeliveryAddressPostalCode", "DeliveryAddressCityName", "DeliveryAddressRegion", "DeliveryAddressCountry")) {
+        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "SupplierName", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "ReturnsItem", "ReturnsIndicator", "IsCompletelyDelivered", "OrderType", "SupplierAddressStreetName", "SupplierAddressHouseNumber", "SupplierAddressBuilding", "SupplierAddressFloor", "SupplierAddressRoomNumber", "SupplierAddressPostalCode", "SupplierAddressCityName", "SupplierAddressRegion", "SupplierAddressCountry", "DeliveryAddressStreetName", "DeliveryAddressHouseNumber", "DeliveryAddressBuilding", "DeliveryAddressFloor", "DeliveryAddressRoomNumber", "DeliveryAddressPostalCode", "DeliveryAddressCityName", "DeliveryAddressRegion", "DeliveryAddressCountry")) {
             JsonNode source = orderLine.path(field);
             if ((!result.has(field) || result.path(field).asText().isBlank()) && !source.isMissingNode() && !source.isNull() && !source.asText().isBlank()) result.set(field, source);
         }
@@ -323,6 +324,13 @@ public class PortalController {
             String value = firstText(address, field);
             if (!value.isBlank() && (!target.has(prefix + field) || target.path(prefix + field).asText().isBlank())) target.put(prefix + field, value);
         }
+    }
+    private void copySupplierName(ObjectNode target, JsonNode source) {
+        if (target.hasNonNull("SupplierName") && !target.path("SupplierName").asText().isBlank()) return;
+        JsonNode address = firstObject(source.path("_SupplierAddress"));
+        if (address == null) return;
+        String supplierName = firstText(address, "FullName", "OrganizationName1", "OrganizationName", "BusinessPartnerFullName", "AddressFullName", "Name");
+        if (!supplierName.isBlank()) target.put("SupplierName", supplierName);
     }
     private JsonNode firstObject(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return null;

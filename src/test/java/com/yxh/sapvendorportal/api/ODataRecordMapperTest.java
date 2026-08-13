@@ -14,7 +14,7 @@ class ODataRecordMapperTest {
     @Test
     void flattensPurchaseOrderItemsAndNormalizesPortalFields() throws Exception {
         var header = objectMapper.readTree("""
-                {"PurchaseOrder":"4500001234","Supplier":"1000000","_PurchaseOrderItem":[
+                {"PurchaseOrder":"4500001234","Supplier":"1000000","SupplierName":"示例轴承供应商","_PurchaseOrderItem":[
                   {"PurchaseOrderItem":"00010","Material":"MAT-01","PurchaseOrderItemText":"精密轴承","OrderQuantity":500,"PurchaseOrderQuantityUnit":"PC","ScheduleLineDeliveryDate":"2026-08-12","OverallStatus":"待确认"}
                 ]}
                 """);
@@ -24,6 +24,7 @@ class ODataRecordMapperTest {
         assertThat(result).hasSize(1);
         var row = result.getFirst();
         assertThat(row.path("PurchaseOrder").asText()).isEqualTo("4500001234");
+        assertThat(row.path("SupplierName").asText()).isEqualTo("示例轴承供应商");
         assertThat(row.path("MaterialDescription").asText()).isEqualTo("精密轴承");
         assertThat(row.path("DeliveryDate").asText()).isEqualTo("2026-08-12");
         assertThat(row.path("PurchaseOrderStatus").asText()).isEqualTo("待确认");

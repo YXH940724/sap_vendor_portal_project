@@ -92,7 +92,7 @@ class PortalControllerTest {
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
             if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("""
-                    {"PurchaseOrder":"4500001020","Supplier":"133000006","_SupplierAddress":{"StreetName":"供应商路","HouseNumber":"10号","CityName":"上海"}}
+                    {"PurchaseOrder":"4500001020","Supplier":"133000006","_SupplierAddress":{"FullName":"上海示例供应商有限公司","StreetName":"供应商路","HouseNumber":"10号","CityName":"上海"}}
                     """));
             return List.of();
         });
@@ -108,6 +108,7 @@ class PortalControllerTest {
         @SuppressWarnings("unchecked") List<JsonNode> records = (List<JsonNode>) controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class)).get("records");
 
         assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("SupplierName").asText()).isEqualTo("上海示例供应商有限公司");
             assertThat(row.path("SupplierAddressStreetName").asText()).isEqualTo("供应商路");
             assertThat(row.path("SupplierAddressCityName").asText()).isEqualTo("上海");
             assertThat(row.path("DeliveryAddressStreetName").asText()).isEqualTo("采购方路");

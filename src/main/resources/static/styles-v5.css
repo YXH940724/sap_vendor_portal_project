@@ -64,3 +64,15 @@
 .ai-float.compact .ai-launcher > span:last-child { display: none; }
 .ai-float.compact .ai-launcher-mark { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
 @media (max-width: 768px) { .ai-float { right: 16px; bottom: 16px; }.ai-float .ai-launcher { padding: 8px; } .ai-float-move, .ai-float-compact { display: none; } }
+
+/* 采购订单保留业务列的可读宽度，超出视口时可用滚动条或鼠标拖动横向查看。 */
+.table-scroll { overflow-x: auto; overflow-y: visible; overscroll-behavior-inline: contain; scrollbar-gutter: stable; }
+.table-scroll.drag-scroll-ready { cursor: grab; user-select: none; }
+.table-scroll.dragging { cursor: grabbing; }
+.purchase-orders-table { min-width: 1420px; }
+.purchase-orders-table .column-DeliveryDate { min-width: 124px; width: 124px; white-space: nowrap; }
+.purchase-orders-table .column-PurchaseOrderStatus { min-width: 116px; width: 116px; white-space: nowrap; text-align: center; }
+.purchase-orders-table .document-actions { min-width: 178px; width: 178px; white-space: nowrap; }
+.purchase-orders-table td.document-actions { white-space: normal; }
+.purchase-orders-table td.document-actions .table-link { display: inline-flex; align-items: center; min-height: 30px; white-space: nowrap; }
+.purchase-orders-table td.document-actions .action-hint { margin-left: 0; white-space: normal; }
