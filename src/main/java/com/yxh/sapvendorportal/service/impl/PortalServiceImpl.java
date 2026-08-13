@@ -218,12 +218,18 @@ public class PortalServiceImpl implements PortalService {
     private Map<String, LocalDate> latestReceiptDates(Collection<JsonNode> receipts) {
         Map<String, LocalDate> dates = new LinkedHashMap<>();
         for (JsonNode receipt : receipts) {
-            if (!"101".equals(firstText(receipt, "GoodsMovementType"))) continue;
-            LocalDate postingDate = parseBusinessDate(firstText(receipt, "PostingDate"));
+            if (!"101".equals(firstNonBlankText(receipt, "GoodsMovementType"))) continue;
+            LocalDate postingDate = receiptPostingDate(receipt);
             if (postingDate == null) continue;
             dates.merge(purchaseOrderLineKey(receipt), postingDate, (left, right) -> left.isAfter(right) ? left : right);
         }
         return dates;
+    }
+    private LocalDate receiptPostingDate(JsonNode receipt) {
+        LocalDate date = parseBusinessDate(firstNonBlankText(receipt, "PostingDate", "DocumentDate"));
+        if (date != null) return date;
+        JsonNode header = firstObject(receipt.path("to_MaterialDocumentHeader"));
+        return header == null ? null : parseBusinessDate(firstNonBlankText(header, "PostingDate", "DocumentDate"));
     }
     private LocalDate parseBusinessDate(String rawDate) {
         if (rawDate == null || rawDate.length() < 10) return null;
@@ -812,6 +818,14 @@ public class PortalServiceImpl implements PortalService {
     }
     private void copyText(ObjectNode target, JsonNode source, String sourceField, String targetField) { String value = source.path(sourceField).asText(); if (!value.isBlank()) target.put(targetField, value); }
     private String firstText(JsonNode record, String... fields) { for (String field : fields) if (record.hasNonNull(field)) return record.get(field).asText(); return ""; }
+    private String firstNonBlankText(JsonNode record, String... fields) {
+        for (String field : fields) {
+            if (!record.hasNonNull(field)) continue;
+            String value = record.get(field).asText().trim();
+            if (!value.isBlank()) return value;
+        }
+        return "";
+    }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent, boolean freeOfCharge) {
         ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }
         ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }

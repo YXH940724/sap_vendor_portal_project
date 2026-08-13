@@ -67,6 +67,7 @@
 
 /* 数据看板采用“采购执行驾驶舱”：三段业务状态卡共享同一基线，指标卡公开计算口径。 */
 .analytics-grid.analytics-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+.analytics-grid.analytics-grid-three > .card + .card { margin-top: 0; }
 .analytics-grid-three .chart-card { display: flex; min-height: 292px; flex-direction: column; }
 .analytics-grid-three .chart-card > header { min-height: 62px; padding-bottom: 14px; border-bottom: 1px solid #e6edf4; }
 .analytics-grid-three .chart-card > header > span { display: block; margin-bottom: 4px; color: #5c83a8; font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }

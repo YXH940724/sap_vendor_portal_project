@@ -42,7 +42,7 @@ class PortalServiceImplTest {
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
             if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"OrderQuantity\":4,\"PurchaseOrderQuantityUnit\":\"EA\",\"DeliveryDate\":\"2026-08-20\",\"DocumentCurrency\":\"CNY\"}"));
-            if ("A_MaterialDocumentItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000002001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PostingDate\":\"2026-08-18\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":4,\"EntryUnit\":\"EA\"}"));
+            if ("A_MaterialDocumentItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000002001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PostingDate\":\"\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":4,\"EntryUnit\":\"EA\",\"to_MaterialDocumentHeader\":{\"PostingDate\":\"2026-08-18\"}}"));
             return List.of();
         });
         PortalServiceImpl service = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
