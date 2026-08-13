@@ -28,7 +28,8 @@ portal:
       url: ${SAP_PURCHASE_ORDER_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata4/sap/api_purchaseorder_2/srvd_a2x/sap/purchaseorder/0001/}
       entity: PurchaseOrder
       supplier-field: Supplier
-      expand: _PurchaseOrderItem
+      # 打印采购订单时需要供应商地址；订单项目的收货方地址由 PurchaseOrderItem 的 _DeliveryAddress 获取。
+      expand: _PurchaseOrderItem,_SupplierAddress
     asn:
       url: ${SAP_ASN_URL:https://my200127-api.s4hana.sapcloud.cn/sap/opu/odata/sap/API_INBOUND_DELIVERY_SRV;v=0002}
       entity: A_InbDeliveryHeader

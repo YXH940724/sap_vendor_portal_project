@@ -164,6 +164,19 @@ class ODataRecordMapperTest {
     }
 
     @Test
+    void keepsSupplierBatchForDeliveryPrinting() throws Exception {
+        var delivery = objectMapper.readTree("""
+                {"DeliveryDocument":"180000001","to_DeliveryDocumentItem":{"results":[
+                  {"DeliveryDocumentItem":"000010","ReferenceSDDocument":"4500001001","BatchBySupplier":"SUP-BATCH-01"}
+                ]}}
+                """);
+
+        var row = mapper.map("asns", List.of(delivery)).getFirst();
+
+        assertThat(row.path("BatchBySupplier").asText()).isEqualTo("SUP-BATCH-01");
+    }
+
+    @Test
     void flattensInboundDeliveryItemsAndCarriesHeaderStatus() throws Exception {
         var delivery = objectMapper.readTree("""
                 {"DeliveryDocument":"180000001","DeliveryDate":"/Date(1786233600000)/","OverallGoodsMovementStatus":"A",

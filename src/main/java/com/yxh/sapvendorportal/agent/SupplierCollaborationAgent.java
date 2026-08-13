@@ -63,7 +63,7 @@ public class SupplierCollaborationAgent {
                 messages.add(toolResult);
             }
         }
-        if (answer.isBlank()) answer = "已完成实时数据校验。请根据下方结果继续操作；涉及创建 ASN 或预制发票时，请在 Portal 表单中确认后提交。";
+        if (answer.isBlank()) answer = "已完成实时数据校验。创建 ASN：业务协同 → 采购订单 → 筛选并勾选订单行 → 基于已选行创建 ASN → 核对表单并提交。创建预制发票：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。";
         return Map.of(
                 "content", answer,
                 "tools", toolSummaries,
@@ -158,7 +158,7 @@ public class SupplierCollaborationAgent {
                 "purchaseOrder", purchaseOrder,
                 "records", lines,
                 "nextSteps", List.of(
-                        "进入“采购订单”页面，以采购订单 " + purchaseOrder + " 筛选对应订单行。",
+                        "进入“业务协同 → 采购订单”页面，以采购订单 " + purchaseOrder + " 筛选对应订单行。",
                         "核对物料、工厂、交期、订单数量、已收货数量、未清 ASN 数量和可发运量；只勾选本次实际发运的行。",
                         "点击“基于已选行创建 ASN”，填写或核对供应商发运单号、计划到货日期、运输参考号和每行发运数量；数量不得超过可发运量。",
                         "提交前再次确认订单行、物料和数量。Portal 会以 SAP 实时订单、ASN 与收货数据重新校验，并在通过 CSRF 与实体可创建性校验后创建 SAP 内向交货单。"
@@ -176,7 +176,7 @@ public class SupplierCollaborationAgent {
                 "purchaseOrder", purchaseOrder,
                 "records", records,
                 "nextSteps", List.of(
-                        "进入“结算对账”页面，按采购订单或收货凭证筛选“可结算”行，并确认收货凭证、采购订单、物料、已结算数量与剩余可结算数量。",
+                        "进入“业务协同 → 结算对账”页面，按采购订单或收货凭证筛选“可结算”行，并确认收货凭证、采购订单、物料、已结算数量与剩余可结算数量。",
                         "勾选同一公司代码和币种下需要本次结算的收货行；逐行填写本次结算数量，不能超过 SAP 实时剩余可结算数量。",
                         "点击“基于已选行创建发票”，填写供应商发票号、凭证日期、过账日期、税务确定日期、抬头不含税金额和税额。",
                         "确认含税金额等于不含税金额加税额。Portal 会按 SAP 订单净价分摊行金额，并在提交时重新校验收货、发票、订单、数量、金额、税码、币种和公司代码后创建 SAP 预制发票。"
@@ -190,7 +190,7 @@ public class SupplierCollaborationAgent {
         if ("purchase_order".equals(documentType)) {
             List<Map<String, Object>> records = portal.agentPurchaseOrders(vendorId).stream()
                     .filter(row -> documentNumber.equals(normalized(row.path("PurchaseOrder").asText())))
-                    .limit(50).map(this::orderView).toList();
+                    .limit(50).map(this::printOrderView).toList();
             return new ToolExecution(Map.of(
                     "documentType", "采购订单",
                     "documentNumber", documentNumber,
@@ -198,15 +198,15 @@ public class SupplierCollaborationAgent {
                     "count", records.size(),
                     "source", "SAP 采购订单 API（Portal 当前供应商范围）",
                     "nextSteps", List.of(
-                            "进入“采购订单”页面，以采购订单 " + documentNumber + " 筛选对应行。",
-                            "核对订单行、物料、交期、数量、价格和状态后，点击任一行的“打印订单”。",
+                            "进入“业务协同 → 采购订单”页面，以采购订单 " + documentNumber + " 筛选对应行。",
+                            "勾选需要打印的订单行；可跨多个订单勾选。核对物料、交期、数量、价格和状态后，点击页面抬头“打印已选 N 张订单”。",
                             "浏览器会打开 A4 打印预览；选择打印机，或选择“另存为 PDF”保存。打印不会修改或发送 SAP 单据。"
                     )), "已核对采购订单 " + documentNumber + " 的 " + records.size() + " 条打印行");
         }
         if ("delivery_note".equals(documentType)) {
             List<Map<String, Object>> records = portal.agentAsns(vendorId).stream()
                     .filter(row -> documentNumber.equals(normalized(row.path("DeliveryDocument").asText())) || documentNumber.equals(normalized(row.path("InbDelivery").asText())))
-                    .limit(50).map(row -> compact(row, List.of("DeliveryDocument", "DeliveryDirection", "InbDelivery", "DeliveryDocumentItem", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "ActualDeliveryDate", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "OverallStatus", "DeliveryDocumentBySupplier", "TransportReference", "Plant", "StorageLocation", "Batch"))).toList();
+                    .limit(50).map(row -> compact(row, List.of("DeliveryDocument", "DeliveryDirection", "InbDelivery", "DeliveryDocumentItem", "PurchaseOrder", "PurchaseOrderItem", "Material", "MaterialDescription", "DeliveryDate", "ActualDeliveryDate", "ActualDeliveryQuantity", "DeliveryQuantityUnit", "OverallStatus", "DeliveryDocumentBySupplier", "TransportReference", "Plant", "StorageLocation", "BatchBySupplier", "SupplierAddressStreetName", "SupplierAddressCityName", "DeliveryAddressStreetName", "DeliveryAddressCityName"))).toList();
             return new ToolExecution(Map.of(
                     "documentType", "ASN / 送货单",
                     "documentNumber", documentNumber,
@@ -214,8 +214,8 @@ public class SupplierCollaborationAgent {
                     "count", records.size(),
                     "source", "普通订单：SAP 内向交货单 / ASN API；退货订单：SAP 外向送货单 API",
                     "nextSteps", List.of(
-                            "进入“ASN / 发运”页面，以送货单 " + documentNumber + "、关联采购订单或物料筛选对应行。",
-                            "核对单据类型、关联订单、物料、发运数量、日期、供应商发运单号和运输参考号后，点击任一行的“打印送货单”。",
+                            "进入“业务协同 → ASN / 发运”页面，以送货单 " + documentNumber + "、关联采购订单或物料筛选对应行。",
+                            "勾选需要打印的送货单行；可跨多个送货单勾选。核对单据类型、关联订单、物料、发运数量、日期、供应商发运单号和运输参考号后，点击页面抬头“打印已选 N 张送货单”。",
                             "浏览器会将同一送货单的当前页面行汇总为 A4 打印预览；选择打印机，或选择“另存为 PDF”保存。退货订单展示 SAP 外向送货单数据，打印不会修改或发送 SAP 单据。"
                     )), "已核对送货单 " + documentNumber + " 的 " + records.size() + " 条打印行");
         }
@@ -224,6 +224,10 @@ public class SupplierCollaborationAgent {
 
     private Map<String, Object> orderView(JsonNode row) {
         return compact(row, List.of("PurchaseOrder", "PurchaseOrderItem", "OrderType", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "IsCompletelyDelivered", "Material", "MaterialDescription", "Plant", "OrderQuantity", "ReceivedQuantity", "OpenReceiptQuantity", "CreatedAsnQuantity", "UnclearedAsnQuantity", "AsnAvailableQuantity", "PurchaseOrderQuantityUnit", "DeliveryDate", "PurchaseOrderStatus"));
+    }
+
+    private Map<String, Object> printOrderView(JsonNode row) {
+        return compact(row, List.of("PurchaseOrder", "Material", "MaterialDescription", "OrderQuantity", "PurchaseOrderQuantityUnit", "NetPriceAmount", "NetPriceQuantity", "DocumentCurrency", "DeliveryDate", "Supplier", "SupplierAddressStreetName", "SupplierAddressCityName", "DeliveryAddressStreetName", "DeliveryAddressCityName"));
     }
 
     private Map<String, Object> receiptView(JsonNode row) {

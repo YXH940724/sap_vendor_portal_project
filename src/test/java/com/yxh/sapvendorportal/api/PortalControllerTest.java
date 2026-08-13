@@ -84,6 +84,38 @@ class PortalControllerTest {
     }
 
     @Test
+    void addsSupplierAndDeliveryAddressesToPurchaseOrderLinesForPrinting() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("""
+                    {"PurchaseOrder":"4500001020","Supplier":"133000006","_SupplierAddress":{"StreetName":"供应商路","HouseNumber":"10号","CityName":"上海"}}
+                    """));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("""
+                    {"PurchaseOrder":"4500001020","PurchaseOrderItem":"00010","Material":"MAT-01","_DeliveryAddress":{"StreetName":"采购方路","HouseNumber":"20号","CityName":"苏州"}}
+                    """));
+            return List.of();
+        });
+        PortalController controller = new PortalController(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        @SuppressWarnings("unchecked") List<JsonNode> records = (List<JsonNode>) controller.data("purchaseOrders", "", 30, mock(HttpServletRequest.class)).get("records");
+
+        assertThat(records).singleElement().satisfies(row -> {
+            assertThat(row.path("SupplierAddressStreetName").asText()).isEqualTo("供应商路");
+            assertThat(row.path("SupplierAddressCityName").asText()).isEqualTo("上海");
+            assertThat(row.path("DeliveryAddressStreetName").asText()).isEqualTo("采购方路");
+            assertThat(row.path("DeliveryAddressCityName").asText()).isEqualTo("苏州");
+        });
+    }
+
+    @Test
     void rejectsAsnForReturnOrderLine() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);
@@ -166,7 +198,8 @@ class PortalControllerTest {
         when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
         when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
-            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\",\"TaxNumber5\":\"TAX-5\",\"to_BusinessPartnerAddress\":{\"results\":[{\"to_EmailAddress\":{\"results\":[{\"EmailAddress\":\"supplier@example.com\"}]},\"to_PhoneNumber\":{\"results\":[{\"PhoneNumber\":\"02100000000\"}]}}]}}"));
+            if ("A_BusinessPartner".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"OrganizationBPName1\":\"测试供应商\",\"to_BusinessPartnerAddress\":{\"results\":[{\"to_EmailAddress\":{\"results\":[{\"EmailAddress\":\"supplier@example.com\"}]},\"to_PhoneNumber\":{\"results\":[{\"PhoneNumber\":\"02100000000\"}]}}]}}"));
+            if ("A_Supplier".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"Supplier\":\"133000006\",\"TaxNumber5\":\"TAX-5\"}"));
             if ("A_BusinessPartnerBank".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartner\":\"133000006\",\"BankNumber\":\"104100006062\",\"BankName\":\"测试银行\",\"SWIFTCode\":\"TESTCNBJ\",\"IBAN\":\"CN00TEST\",\"BankAccount\":\"622200001234\"}"));
             if ("A_BusinessPartnerContact".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"BusinessPartnerCompany\":\"133000006\",\"BusinessPartnerPerson\":\"200000001\"}"));
             return List.of();

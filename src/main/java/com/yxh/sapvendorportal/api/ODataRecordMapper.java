@@ -89,6 +89,7 @@ public class ODataRecordMapper {
                 alias(row, "MaterialDescription", "MaterialDescription", "DeliveryDocumentItemText", "ItemText", "MaterialName", "ProductDescription");
                 alias(row, "ActualDeliveryQuantity", "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
                 alias(row, "DeliveryQuantityUnit", "DeliveryQuantityUnit", "ActualDeliveryQuantityUnit", "BaseUnit");
+                alias(row, "BatchBySupplier", "BatchBySupplier", "SupplierBatch", "Batch");
                 alias(row, "TransportReference", "TransportReference", "BillOfLading");
                 row.put("DeliveryDirection", "内向交货单");
             }
@@ -101,6 +102,7 @@ public class ODataRecordMapper {
                 alias(row, "MaterialDescription", "MaterialDescription", "DeliveryDocumentItemText", "ItemText", "MaterialName", "ProductDescription");
                 alias(row, "ActualDeliveryQuantity", "ActualDeliveryQuantity", "DeliveryQuantity", "ActualQuantity");
                 alias(row, "DeliveryQuantityUnit", "DeliveryQuantityUnit", "ActualDeliveryQuantityUnit", "BaseUnit");
+                alias(row, "BatchBySupplier", "BatchBySupplier", "SupplierBatch", "Batch");
                 alias(row, "DeliveryDate", "PlannedDeliveryDate", "DeliveryDate", "ActualDeliveryDate");
                 row.put("DeliveryDirection", "外向送货单（退货）");
             }

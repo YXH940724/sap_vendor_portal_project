@@ -182,7 +182,7 @@ public class PortalController {
         PortalProperties.Service itemService = new PortalProperties.Service();
         itemService.setUrl(properties.getSap().getPurchaseOrder().getUrl());
         itemService.setEntity("PurchaseOrderItem");
-        itemService.setExpand("_PurchaseOrderScheduleLineTP");
+        itemService.setExpand("_PurchaseOrderScheduleLineTP,_DeliveryAddress");
         return itemService;
     }
     private List<JsonNode> enrichWithSubcontractingComponents(List<JsonNode> orderLines, List<String> purchaseOrders, int top) {
@@ -236,6 +236,9 @@ public class PortalController {
     private List<JsonNode> loadSupplierProfile(String vendorId, String search, int top) {
         PortalProperties.Service businessPartner = service("businessPartner");
         List<JsonNode> partners = recordMapper.map("suppliers", sapClient.get(businessPartner, vendorId, search, "BusinessPartner", "BusinessPartner asc", top));
+        PortalProperties.Service supplierMaster = new PortalProperties.Service();
+        supplierMaster.setUrl(businessPartner.getUrl()); supplierMaster.setEntity("A_Supplier"); supplierMaster.setSupplierField("Supplier");
+        List<JsonNode> supplierMasters = sapClient.get(supplierMaster, vendorId, "", "Supplier", "Supplier asc", top);
         PortalProperties.Service supplierCompany = new PortalProperties.Service();
         supplierCompany.setUrl(businessPartner.getUrl()); supplierCompany.setEntity("A_SupplierCompany"); supplierCompany.setSupplierField("Supplier");
         List<JsonNode> companies = recordMapper.map("supplierCompanies", sapClient.get(supplierCompany, vendorId, "", "Supplier", "CompanyCode asc", top));
@@ -256,6 +259,8 @@ public class PortalController {
         }
         Map<String, JsonNode> peopleById = new LinkedHashMap<>();
         people.forEach(person -> peopleById.put(firstText(person, "BusinessPartner", "ContactPerson"), person));
+        Map<String, JsonNode> supplierMasterBySupplier = new LinkedHashMap<>();
+        supplierMasters.forEach(supplier -> supplierMasterBySupplier.put(firstText(supplier, "Supplier", "BusinessPartner"), supplier));
         ArrayNode contacts = JsonNodeFactory.instance.arrayNode();
         for (JsonNode relationship : relationships) {
             String personId = firstText(relationship, "ContactPerson", "BusinessPartnerPerson");
@@ -271,6 +276,8 @@ public class PortalController {
         return partners.stream().map(partner -> {
             if (!partner.isObject()) return partner;
             ObjectNode result = ((ObjectNode) partner).deepCopy();
+            JsonNode supplierMasterRecord = supplierMasterBySupplier.get(firstText(result, "Supplier", "BusinessPartner"));
+            if (supplierMasterRecord != null && !firstText(supplierMasterRecord, "TaxNumber5").isBlank()) result.put("TaxNumber5", firstText(supplierMasterRecord, "TaxNumber5"));
             ArrayNode supplierCompanies = companiesBySupplier.get(firstText(result, "Supplier", "BusinessPartner"));
             if (supplierCompanies != null) result.set("SupplierCompanies", supplierCompanies.deepCopy());
             ArrayNode supplierBanks = JsonNodeFactory.instance.arrayNode();
@@ -281,11 +288,15 @@ public class PortalController {
         }).toList();
     }
     private JsonNode enrichPurchaseOrderItem(JsonNode item, JsonNode header) {
-        if (header == null || !item.isObject()) return item;
+        if (!item.isObject()) return item;
         ObjectNode result = ((ObjectNode) item).deepCopy();
-        for (String field : List.of("Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency")) {
-            if (!result.has(field) && header.has(field)) result.set(field, header.get(field));
+        if (header != null) {
+            for (String field : List.of("Supplier", "CompanyCode", "PurchasingOrganization", "PurchaseOrderDate", "DocumentCurrency")) {
+                if (!result.has(field) && header.has(field)) result.set(field, header.get(field));
+            }
+            copyAddress(result, header, "_SupplierAddress", "SupplierAddress");
         }
+        copyAddress(result, result, "_DeliveryAddress", "DeliveryAddress");
         return result;
     }
     private List<JsonNode> enrichWithPurchaseOrderItems(List<JsonNode> records, String vendorId, int top) {
@@ -299,11 +310,28 @@ public class PortalController {
     private JsonNode enrichWithPurchaseOrderItem(JsonNode record, JsonNode orderLine) {
         if (orderLine == null || !record.isObject()) return record;
         ObjectNode result = ((ObjectNode) record).deepCopy();
-        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "ReturnsItem", "ReturnsIndicator", "IsCompletelyDelivered", "OrderType")) {
+        for (String field : List.of("Material", "MaterialDescription", "PurchaseOrderQuantityUnit", "OrderQuantity", "CompanyCode", "DocumentCurrency", "NetPriceAmount", "NetPriceQuantity", "TaxCode", "InbDelivery", "PurchasingItemIsFreeOfCharge", "PurchaseOrderItemCategory", "IsReturnsItem", "ReturnsItem", "ReturnsIndicator", "IsCompletelyDelivered", "OrderType", "SupplierAddressStreetName", "SupplierAddressHouseNumber", "SupplierAddressBuilding", "SupplierAddressFloor", "SupplierAddressRoomNumber", "SupplierAddressPostalCode", "SupplierAddressCityName", "SupplierAddressRegion", "SupplierAddressCountry", "DeliveryAddressStreetName", "DeliveryAddressHouseNumber", "DeliveryAddressBuilding", "DeliveryAddressFloor", "DeliveryAddressRoomNumber", "DeliveryAddressPostalCode", "DeliveryAddressCityName", "DeliveryAddressRegion", "DeliveryAddressCountry")) {
             JsonNode source = orderLine.path(field);
             if ((!result.has(field) || result.path(field).asText().isBlank()) && !source.isMissingNode() && !source.isNull() && !source.asText().isBlank()) result.set(field, source);
         }
         return result;
+    }
+    private void copyAddress(ObjectNode target, JsonNode source, String navigationProperty, String prefix) {
+        JsonNode address = firstObject(source.path(navigationProperty));
+        if (address == null) return;
+        for (String field : List.of("StreetName", "HouseNumber", "Building", "Floor", "RoomNumber", "PostalCode", "CityName", "Region", "Country")) {
+            String value = firstText(address, field);
+            if (!value.isBlank() && (!target.has(prefix + field) || target.path(prefix + field).asText().isBlank())) target.put(prefix + field, value);
+        }
+    }
+    private JsonNode firstObject(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) return null;
+        if (node.isObject()) {
+            if (node.path("value").isArray() && !node.path("value").isEmpty()) return node.path("value").get(0);
+            if (node.path("results").isArray() && !node.path("results").isEmpty()) return node.path("results").get(0);
+            return node;
+        }
+        return node.isArray() && !node.isEmpty() ? node.get(0) : null;
     }
     private List<JsonNode> loadDeliveryDocuments(String vendorId, String search, int top, List<JsonNode> orderLines) {
         boolean hasStandardOrders = orderLines.stream().anyMatch(line -> !isReturnPurchaseOrder(line));

@@ -95,7 +95,7 @@
     "type": "function",
     "function": {
       "name": "prepare_print_document",
-      "description": "在当前供应商范围内核对采购订单或送货单的打印数据，并返回相关单据与 Portal 打印操作指引；只提供浏览器打印或另存为 PDF 的指引，不修改或发送 SAP 单据。",
+      "description": "在当前供应商范围内核对采购订单或送货单的打印数据，并返回“业务协同”中勾选多张单据、使用页面抬头打印按钮、浏览器打印或另存为 PDF 的操作指引；不修改或发送 SAP 单据。",
       "parameters": {
         "type": "object",
         "properties": {
