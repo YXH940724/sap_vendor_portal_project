@@ -38,6 +38,35 @@ mvn spring-boot:run
 
 如租户确认写入实体集不是 `A_InbDeliveryHeader`，可额外设置 `SAP_ASN_CREATE_PATH`；如供应商字段不是 `Supplier`，可设置 `SAP_ASN_CREATE_VENDOR_FIELD`。这两个配置仅用于租户扩展，不影响默认标准 API。
 
+## 飞书多维表格账号与权限管理
+
+当前项目支持将飞书多维表格作为轻量授权中心。已在指定 Base `Vendor Portal Authorizaiton Configuration` 内创建 **Portal 登录授权** 表（表 ID：`tblmCxjQzBxZpIDi`）。每一行代表一个可登录供应商账号及其唯一供应商范围。
+
+启用方式：
+
+```bash
+PORTAL_AUTH_MODE=lark_bitable
+LARK_APP_ID=cli_xxx
+LARK_APP_SECRET=***
+LARK_BITABLE_APP_TOKEN=Ta7pbhUwGakUgXsZMHEcuHprnpc
+LARK_BITABLE_LOGIN_TABLE_ID=tblmCxjQzBxZpIDi
+PORTAL_SESSION_SECRET=使用高强度随机字符串
+```
+
+飞书应用需使用**应用身份**具备目标多维表格的读取权限。Portal 仅由服务端调用飞书 OpenAPI，浏览器不会取得飞书应用密钥或 Base 数据。
+
+在“Portal 登录授权”表新增账号时，维护：`登录账号`、`密码哈希`、`供应商编码`、`状态=启用`，并按需维护采购组织、公司代码、工厂与权限。密码哈希必须是 BCrypt 格式（以 `$2a$`、`$2b$` 或 `$2y$` 开头），禁止填写明文密码。管理员可在本地生成哈希（命令执行后只输出哈希，不保存密码）：
+
+```bash
+mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+  -Dexec.mainClass=com.yxh.sapvendorportal.common.utils.PasswordHashTool \
+  -Dexec.args='请替换为实际密码'
+```
+
+账号密码、哈希和应用密钥都不应提交到 Git。
+
+可选权限包括：`ORDER_READ`、`ASN_READ`、`ASN_CREATE`、`GOODS_RECEIPT_READ`、`SETTLEMENT_READ`、`INVOICE_CREATE`、`PRINT`、`SUPPLIER_PROFILE_READ`、`AI_QUERY`。登录后，Portal 以 HttpOnly、SameSite=Strict 会话 Cookie 绑定该账号，所有 SAP 查询强制使用授权记录中的供应商编码；未授予的页面、ASN 创建、预制发票创建与 AI 查询会被服务端拒绝。
+
 ## 无数据库的账号与权限管理
 
 开发模式可通过 `PORTAL_AUTH_MODE=single_vendor` + `PORTAL_VENDOR_ID` 将一个部署实例固定在单个供应商范围。生产多供应商模式使用：

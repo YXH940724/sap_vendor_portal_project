@@ -55,6 +55,7 @@ public class PortalServiceImpl implements PortalService {
     public Map<String, Object> dashboard(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
+        requirePermission(scope, "ORDER_READ");
         LoadResult ordersResult = safelyLoad("purchaseOrders", scope.vendorId(), "", 100, List.of());
         List<JsonNode> orders = ordersResult.records();
         List<String> purchaseOrders = purchaseOrderIds(orders);
@@ -81,12 +82,13 @@ public class PortalServiceImpl implements PortalService {
     }
     public Map<String, Object> data(String resourceName, String search, int top, HttpServletRequest request) {
         requireConfigured(); Resource resource = resources.get(resourceName); if (resource == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "未知资源。");
-        var scope = scopeResolver.resolve(request); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
+        var scope = scopeResolver.resolve(request); requirePermission(scope, permissionFor(resourceName)); List<JsonNode> records = load(resourceName, scope.vendorId(), search, top, List.of());
         Map<String, Object> response = new LinkedHashMap<>(); response.put("resource", resourceName); response.put("vendorId", scope.vendorId()); response.put("records", records); response.put("count", records.size()); response.put("retrievedAt", Instant.now().toString()); return response;
     }
     public Map<String, Object> reconciliation(HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
+        requirePermission(scope, "SETTLEMENT_READ");
         List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream()
                 .filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0)
                 .map(ReconciliationLine::view).toList();
@@ -95,6 +97,7 @@ public class PortalServiceImpl implements PortalService {
     public Map<String, Object> createAsn(JsonNode input, HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
+        requirePermission(scope, "ASN_CREATE");
         ObjectNode submission = input instanceof ObjectNode object ? object.deepCopy() : JsonNodeFactory.instance.objectNode();
         String portalAsnNumber = portalAsnNumber(submission);
         submission.put("portalAsnNumber", portalAsnNumber);
@@ -111,6 +114,7 @@ public class PortalServiceImpl implements PortalService {
     public Map<String, Object> createInvoice(JsonNode input, HttpServletRequest request) {
         requireConfigured();
         var scope = scopeResolver.resolve(request);
+        requirePermission(scope, "INVOICE_CREATE");
         ObjectNode validated = validateAndBuildInvoice(input, scope.vendorId());
         return Map.of("vendorId", scope.vendorId(), "result", sapClient.createSupplierInvoice(scope.vendorId(), validated));
     }
@@ -125,6 +129,8 @@ public class PortalServiceImpl implements PortalService {
         return reconciliationLines(vendorId, 100).stream().filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0).map(ReconciliationLine::view).toList();
     }
     private PortalProperties.Service service(String name) { return switch (name) { case "businessPartner" -> properties.getSap().getBusinessPartner(); case "purchaseOrder" -> properties.getSap().getPurchaseOrder(); case "asn" -> properties.getSap().getAsn(); case "outboundDelivery" -> properties.getSap().getOutboundDelivery(); case "material" -> properties.getSap().getMaterial(); case "materialDocument" -> properties.getSap().getMaterialDocument(); case "supplierInvoice" -> properties.getSap().getSupplierInvoice(); default -> throw new IllegalArgumentException("未知 SAP 服务。"); }; }
+    private String permissionFor(String resourceName) { return switch (resourceName) { case "purchaseOrders" -> "ORDER_READ"; case "asns" -> "ASN_READ"; case "materialDocuments" -> "GOODS_RECEIPT_READ"; case "invoices" -> "SETTLEMENT_READ"; case "suppliers" -> "SUPPLIER_PROFILE_READ"; default -> "ORDER_READ"; }; }
+    private void requirePermission(VendorScopeResolver.VendorScope scope, String permission) { if (!scope.allows(permission)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前账号未获 " + permission + " 权限。"); }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {
         Map<String, Object> result = new LinkedHashMap<>();

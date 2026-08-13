@@ -1,6 +1,7 @@
 package com.yxh.sapvendorportal.common.security;
 
 import com.yxh.sapvendorportal.config.PortalProperties;
+import com.yxh.sapvendorportal.service.PortalLoginService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -10,14 +11,20 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Set;
 
 @Component
 public class VendorScopeResolver {
     private final PortalProperties properties;
-    public VendorScopeResolver(PortalProperties properties) { this.properties = properties; }
+    private final PortalLoginService loginService;
+    public VendorScopeResolver(PortalProperties properties, PortalLoginService loginService) { this.properties = properties; this.loginService = loginService; }
 
     public VendorScope resolve(HttpServletRequest request) {
         if ("single_vendor".equals(properties.getAuthMode())) return new VendorScope(properties.getVendorId(), "server_environment");
+        if ("lark_bitable".equals(properties.getAuthMode())) {
+            PortalLoginService.Principal principal = loginService.require(request);
+            return new VendorScope(principal.vendorId(), "lark_bitable", principal.account(), principal.vendorName(), principal.purchasingOrganizations(), principal.companyCodes(), principal.plants(), principal.permissions());
+        }
         String vendorId = request.getHeader("X-Portal-Vendor-Id");
         String timestamp = request.getHeader("X-Portal-Timestamp");
         String signature = request.getHeader("X-Portal-Signature");
@@ -49,5 +56,8 @@ public class VendorScopeResolver {
     }
     private ResponseStatusException unauthorized(String message) { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, message); }
     private boolean blank(String value) { return value == null || value.isBlank(); }
-    public record VendorScope(String vendorId, String identitySource) { }
+    public record VendorScope(String vendorId, String identitySource, String account, String vendorName, Set<String> purchasingOrganizations, Set<String> companyCodes, Set<String> plants, Set<String> permissions) {
+        public VendorScope(String vendorId, String identitySource) { this(vendorId, identitySource, "", "", Set.of(), Set.of(), Set.of(), Set.of()); }
+        public boolean allows(String permission) { return !"lark_bitable".equals(identitySource) || permissions.contains(permission); }
+    }
 }

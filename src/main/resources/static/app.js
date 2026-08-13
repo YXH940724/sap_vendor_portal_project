@@ -42,12 +42,16 @@ const $ = (selector) => document.querySelector(selector); const page = $('#pageC
 
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.route)));
 $('#refreshButton').addEventListener('click', () => renderCurrentRoute(true)); $('#menuButton').addEventListener('click', () => $('.app-shell').classList.toggle('nav-open'));
+$('#loginForm').addEventListener('submit', submitLogin); $('#logoutButton').addEventListener('click', logout);
 $('#closeDrawer').addEventListener('click', closeDrawer); $('#drawerOverlay').addEventListener('click', closeDrawer); $('#closeModal').addEventListener('click', closeModal); $('#cancelModal').addEventListener('click', closeModal); $('#asnForm').addEventListener('submit', submitAsn); $('#closeInvoiceModal').addEventListener('click', closeInvoiceModal); $('#cancelInvoiceModal').addEventListener('click', closeInvoiceModal); $('#invoiceForm').addEventListener('submit', submitInvoice);
 
 async function boot() {
-  try { const [health, session] = await Promise.all([api('/api/health'), api('/api/session')]); vendorId = session.vendorId; $('#vendorScope').textContent = `供应商 ${vendorId}`; $('#vendorName').textContent = `供应商工作空间`; $('#connectionLabel').textContent = health.configured ? '已就绪' : '待配置'; } catch { $('#connectionLabel').textContent = '连接异常'; }
+  try { const auth = await api('/api/auth/session'); if (auth.required && !auth.authenticated) return showLogin(); $('#loginGate').hidden = true; $('#portalApp').hidden = false; if (auth.required) { $('#portalUserName').textContent = auth.account; $('#logoutButton').hidden = false; } const [health, session] = await Promise.all([api('/api/health'), api('/api/session')]); vendorId = session.vendorId; $('#vendorScope').textContent = `供应商 ${vendorId}`; $('#vendorName').textContent = auth.vendorName || '供应商工作空间'; $('#connectionLabel').textContent = health.configured ? '已就绪' : '待配置'; } catch (error) { $('#connectionLabel').textContent = '连接异常'; showLogin(error.message); return; }
   initAiAssistant(); navigate(location.hash.replace('#/', '') || 'dashboard');
 }
+function showLogin(message = '') { $('#portalApp').hidden = true; $('#loginGate').hidden = false; $('#loginMessage').textContent = message; $('#loginAccount').focus(); }
+async function submitLogin(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const message = $('#loginMessage'); const button = event.currentTarget.querySelector('button'); message.textContent = '正在验证账号与授权范围…'; button.disabled = true; try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ account: form.get('account'), password: form.get('password') }) }); $('#loginPassword').value = ''; await boot(); } catch (error) { message.textContent = error.message; } finally { button.disabled = false; } }
+async function logout() { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); sapDataCache.clear(); selectedOrderLines.clear(); selectedAsnLines.clear(); selectedReceiptLines.clear(); aiHistory.length = 0; location.hash = ''; showLogin('您已安全退出。'); }
 function navigate(route) {
   currentRoute = resources[route] ? route : 'dashboard'; location.hash = `/${currentRoute}`; $('.app-shell').classList.remove('nav-open');
   document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('active', item.dataset.route === currentRoute)); $('#breadcrumbPage').textContent = resources[currentRoute].title;

@@ -28,6 +28,8 @@ public class AgentController {
 
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody JsonNode input, HttpServletRequest request) {
-        return agent.chat(scopeResolver.resolve(request), input);
+        var scope = scopeResolver.resolve(request);
+        if (!scope.allows("AI_QUERY")) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "当前账号未获 AI 查询权限。");
+        return agent.chat(scope, input);
     }
 }

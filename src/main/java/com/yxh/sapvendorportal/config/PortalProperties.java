@@ -7,6 +7,7 @@ public class PortalProperties {
     private String authMode = "single_vendor";
     private String vendorId;
     private String identityHmacSecret;
+    private final Bitable bitable = new Bitable();
     private final Sap sap = new Sap();
     private final Ai ai = new Ai();
 
@@ -16,13 +17,15 @@ public class PortalProperties {
     public void setVendorId(String vendorId) { this.vendorId = vendorId; }
     public String getIdentityHmacSecret() { return identityHmacSecret; }
     public void setIdentityHmacSecret(String identityHmacSecret) { this.identityHmacSecret = identityHmacSecret; }
+    public Bitable getBitable() { return bitable; }
     public Sap getSap() { return sap; }
     public Ai getAi() { return ai; }
 
     public String validationIssue() {
-        if (!"single_vendor".equals(authMode) && !"proxy_hmac".equals(authMode)) return "PORTAL_AUTH_MODE 仅支持 single_vendor 或 proxy_hmac。";
+        if (!"single_vendor".equals(authMode) && !"proxy_hmac".equals(authMode) && !"lark_bitable".equals(authMode)) return "PORTAL_AUTH_MODE 仅支持 single_vendor、proxy_hmac 或 lark_bitable。";
         if ("single_vendor".equals(authMode) && blank(vendorId)) return "尚未配置 PORTAL_VENDOR_ID。";
         if ("proxy_hmac".equals(authMode) && blank(identityHmacSecret)) return "尚未配置 PORTAL_IDENTITY_HMAC_SECRET。";
+        if ("lark_bitable".equals(authMode) && (blank(bitable.appId) || blank(bitable.appSecret) || blank(bitable.appToken) || blank(bitable.tableId) || blank(bitable.sessionSecret))) return "飞书多维表格登录模式需要配置 LARK_APP_ID、LARK_APP_SECRET、LARK_BITABLE_APP_TOKEN、LARK_BITABLE_LOGIN_TABLE_ID 和 PORTAL_SESSION_SECRET。";
         if (!"basic".equals(sap.authMode) && !"bearer".equals(sap.authMode)) return "SAP_AUTH_MODE 仅支持 basic 或 bearer。";
         if ("basic".equals(sap.authMode) && (blank(sap.username) || blank(sap.password))) return "尚未配置 SAP_USERNAME 或 SAP_PASSWORD。";
         if ("bearer".equals(sap.authMode) && blank(sap.bearerToken)) return "尚未配置 SAP_BEARER_TOKEN。";
@@ -36,6 +39,21 @@ public class PortalProperties {
     }
 
     private boolean blank(String value) { return value == null || value.isBlank(); }
+
+    public static class Bitable {
+        private String appId;
+        private String appSecret;
+        private String appToken;
+        private String tableId;
+        private String sessionSecret;
+        private int sessionTtlMinutes = 480;
+        public String getAppId() { return appId; } public void setAppId(String value) { appId = value; }
+        public String getAppSecret() { return appSecret; } public void setAppSecret(String value) { appSecret = value; }
+        public String getAppToken() { return appToken; } public void setAppToken(String value) { appToken = value; }
+        public String getTableId() { return tableId; } public void setTableId(String value) { tableId = value; }
+        public String getSessionSecret() { return sessionSecret; } public void setSessionSecret(String value) { sessionSecret = value; }
+        public int getSessionTtlMinutes() { return sessionTtlMinutes; } public void setSessionTtlMinutes(int value) { sessionTtlMinutes = value; }
+    }
 
     public static class Sap {
         private String authMode = "basic";
