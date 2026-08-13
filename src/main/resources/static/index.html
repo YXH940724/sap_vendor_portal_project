@@ -36,9 +36,9 @@
     <aside id="aiAssistant" class="ai-assistant" aria-label="供应商协同 AI 助手" aria-hidden="true" hidden>
       <header class="ai-head"><div><span class="ai-orbit">✦</span><div><small>SUPPLIER COLLABORATION AGENT</small><h2>供应商协同助手</h2><p id="aiConnectionState">正在检查 AI 服务…</p></div></div><button id="aiAssistantClose" aria-label="关闭 AI 助手">×</button></header>
       <div id="aiConversation" class="ai-conversation" aria-live="polite"><article class="ai-message ai-message-agent"><span class="ai-avatar">✦</span><div><b>协同助手</b><p>我可以基于当前供应商的 SAP 实时数据查询订单、跟踪 ASN、核对可结算收货，并为 ASN 或预制发票准备草稿依据。</p></div></article></div>
-      <div class="ai-shortcuts" aria-label="快捷问题"><button data-ai-prompt="今天我优先处理什么？">今日待办</button><button data-ai-prompt="查询待交货的采购订单">待交订单</button><button data-ai-prompt="查询可结算的收货凭证">可结算收货</button><button data-ai-prompt="我想创建 ASN，需要哪些订单行？">创建 ASN</button></div>
+      <div class="ai-shortcuts" aria-label="快捷问题"><button data-ai-prompt="今天我优先处理什么？">今日待办</button><button data-ai-prompt="查询今日待交订单">待交订单</button><button data-ai-prompt="查询今日可结算收货凭证">可结算收货</button><button data-ai-prompt="查询今日可创建 ASN 的订单行">创建 ASN</button></div>
       <form id="aiChatForm" class="ai-composer"><label class="sr-only" for="aiChatInput">向供应商协同助手提问</label><textarea id="aiChatInput" rows="2" maxlength="2000" placeholder="例如：本周有哪些订单需要发运？"></textarea><div><small>仅查询当前供应商范围；写入 SAP 前仍需您确认。</small><button id="aiChatSend" class="ai-send" type="submit">发送 <span>↗</span></button></div></form>
     </aside>
-    <script type="module" src="/app.js?v=20260813-9"></script>
+    <script type="module" src="/app.js?v=20260813-10"></script>
   </body>
 </html>

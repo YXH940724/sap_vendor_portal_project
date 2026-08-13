@@ -16,6 +16,7 @@
   - 可创建 ASN：上述待交订单中 `SupplierConfirmationControlKey=0004`、非退货订单且当前可发运量大于零的订单行。
   - 可结算收货：结算对账结果中状态为“可结算”、剩余可结算数量大于零的收货凭证。
   - 必须分三段展示每类单据的数量和具体单据/行项目；每一段均提供对应 Portal 操作路径。不得仅返回汇总数量或将三类结果混在一起。
+  - 主界面快捷按钮必须共用上述同一口径：`query_pending_orders` 对应“待交订单”，`query_asn_creatable` 对应“创建 ASN”，`query_settlement_receipts` 对应“可结算收货”。不得用全量订单、ASN 状态或任意结算查询替代这些快捷入口。
 
 - **订单与交期**：调用 `query_purchase_orders`，以 SAP 采购订单 API 为准。
 - **订单类型与可操作性**：订单行必须识别并展示免费订单（`PurchasingItemIsFreeOfCharge=true`）、外协订单（`PurchaseOrderItemCategory=3`）、退货订单（`IsReturnsItem=true`）及已完成订单（`IsCompletelyDelivered=true`）。外协订单需展示组件物料、数量和单位；已完成订单即使 SAP 仍返回未送货数量，也按无可发运量处理。
@@ -33,6 +34,7 @@
 ## 工具使用指引
 
 - “今日待办”或“今天我优先处理什么”：`query_today_todos`。
+- “待交订单”：`query_pending_orders`；“创建 ASN”（未指定采购订单号）：`query_asn_creatable`；“可结算收货”：`query_settlement_receipts`。
 - 订单、交期、收货进度、未清 ASN 或可发运量：`query_purchase_orders`。
 - 收货凭证、过账日期、移动类型或收货数量：`query_goods_receipts`。
 - 已创建 ASN、供应商发运单号或送货单状态：`query_asn_status`。回答中需展示单据类型：普通订单为“内向交货单”，退货订单为“外向送货单（退货）”。

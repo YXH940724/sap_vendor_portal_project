@@ -24,7 +24,7 @@ class AgentDefinitionLoaderTest {
         assertThat(loader.systemPrompt()).contains("供应商协同 Agent").contains("当前登录供应商").contains("未清 ASN 数量").contains("收货凭证 API");
         assertThat(StreamSupport.stream(loader.toolDefinitions().spliterator(), false)
                 .map(tool -> tool.path("function").path("name").asText()))
-                .containsExactly("query_today_todos", "query_purchase_orders", "query_goods_receipts", "query_asn_status", "query_settlement_candidates", "prepare_asn_draft", "prepare_invoice_draft", "prepare_print_document");
+                .containsExactly("query_today_todos", "query_pending_orders", "query_asn_creatable", "query_settlement_receipts", "query_purchase_orders", "query_goods_receipts", "query_asn_status", "query_settlement_candidates", "prepare_asn_draft", "prepare_invoice_draft", "prepare_print_document");
     }
 
     @Test
@@ -52,6 +52,9 @@ class AgentDefinitionLoaderTest {
     @Test
     void routesSingleTopicStandardRequestsWithoutWaitingForToolSelectionModelCall() {
         var todoRoute = SupplierCollaborationAgent.directRoute("今天我优先处理什么？");
+        var pendingRoute = SupplierCollaborationAgent.directRoute("查询今日待交订单");
+        var asnCreatableRoute = SupplierCollaborationAgent.directRoute("查询今日可创建 ASN 的订单行");
+        var settlementReceiptRoute = SupplierCollaborationAgent.directRoute("查询今日可结算收货凭证");
         var orderRoute = SupplierCollaborationAgent.directRoute("查询采购订单 4500000001 的交期和可发运量");
         var receiptRoute = SupplierCollaborationAgent.directRoute("查询订单 4500000001 的收货凭证");
         var asnRoute = SupplierCollaborationAgent.directRoute("查询 ASN 送货单 4500000001");
@@ -60,6 +63,9 @@ class AgentDefinitionLoaderTest {
         var invoiceDraftRoute = SupplierCollaborationAgent.directRoute("准备创建采购订单 4500000001 的预制发票");
 
         assertThat(todoRoute.toolName()).isEqualTo("query_today_todos");
+        assertThat(pendingRoute.toolName()).isEqualTo("query_pending_orders");
+        assertThat(asnCreatableRoute.toolName()).isEqualTo("query_asn_creatable");
+        assertThat(settlementReceiptRoute.toolName()).isEqualTo("query_settlement_receipts");
         assertThat(orderRoute.toolName()).isEqualTo("query_purchase_orders");
         assertThat(orderRoute.keyword()).isEqualTo("4500000001");
         assertThat(receiptRoute.toolName()).isEqualTo("query_goods_receipts");
@@ -93,6 +99,9 @@ class AgentDefinitionLoaderTest {
                 new DeepSeekChatClient(new PortalProperties(), objectMapper), portal, objectMapper, new AgentDefinitionLoader(objectMapper));
 
         Map<String, Object> result = agent.chat(new VendorScopeResolver.VendorScope("13300006", "test"), objectMapper.readTree("{\"message\":\"今天我优先处理什么？\"}"));
+        Map<String, Object> pendingResult = agent.chat(new VendorScopeResolver.VendorScope("13300006", "test"), objectMapper.readTree("{\"message\":\"查询今日待交订单\"}"));
+        Map<String, Object> asnResult = agent.chat(new VendorScopeResolver.VendorScope("13300006", "test"), objectMapper.readTree("{\"message\":\"查询今日可创建 ASN 的订单行\"}"));
+        Map<String, Object> settlementResult = agent.chat(new VendorScopeResolver.VendorScope("13300006", "test"), objectMapper.readTree("{\"message\":\"查询今日可结算收货凭证\"}"));
 
         assertThat(result.get("content").toString())
                 .contains("待交订单（2 条）")
@@ -100,5 +109,8 @@ class AgentDefinitionLoaderTest {
                 .contains("可结算收货（1 条）")
                 .contains("确认控制码为 0004")
                 .contains("业务协同 → 结算对账");
+        assertThat(pendingResult.get("content").toString()).contains("待交订单（2 条");
+        assertThat(asnResult.get("content").toString()).contains("可创建 ASN（1 条").doesNotContain("4500000002");
+        assertThat(settlementResult.get("content").toString()).contains("可结算收货（1 条）");
     }
 }

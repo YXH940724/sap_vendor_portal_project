@@ -139,6 +139,9 @@ public class SupplierCollaborationAgent {
     @SuppressWarnings("unchecked")
     static String executionContext(String toolName, Map<String, Object> data) {
         if ("query_today_todos".equals(toolName)) return todayTodoContext(data);
+        if ("query_pending_orders".equals(toolName)) return todayTodoCategoryContext("待交订单", (List<Map<String, Object>>) data.getOrDefault("records", List.of()), data, false);
+        if ("query_asn_creatable".equals(toolName)) return todayTodoCategoryContext("可创建 ASN", (List<Map<String, Object>>) data.getOrDefault("records", List.of()), data, true);
+        if ("query_settlement_receipts".equals(toolName)) return todaySettlementContext((List<Map<String, Object>>) data.getOrDefault("records", List.of()), data);
         Object recordsValue = data.get("records");
         if (!(recordsValue instanceof List<?> sourceRecords) || sourceRecords.isEmpty()) {
             Object notice = data.containsKey("error") ? data.get("error") : data.getOrDefault("warning", "");
@@ -189,6 +192,9 @@ public class SupplierCollaborationAgent {
             JsonNode arguments = objectMapper.readTree(rawArguments);
             return switch (name) {
                 case "query_today_todos" -> queryTodayTodos(vendorId);
+                case "query_pending_orders" -> queryPendingOrders(vendorId);
+                case "query_asn_creatable" -> queryAsnCreatable(vendorId);
+                case "query_settlement_receipts" -> querySettlementReceipts(vendorId);
                 case "query_purchase_orders" -> queryPurchaseOrders(arguments, vendorId);
                 case "query_goods_receipts" -> queryGoodsReceipts(arguments, vendorId);
                 case "query_asn_status" -> queryAsnStatus(arguments, vendorId);
@@ -205,14 +211,42 @@ public class SupplierCollaborationAgent {
     }
 
     private ToolExecution queryTodayTodos(String vendorId) {
+        TodayTodoData todos = todayTodoData(vendorId);
+        Map<String, Object> data = todoData(todos);
+        return new ToolExecution(data, "今日待办：待交订单 " + todos.pendingOrders().size() + " 条，可创建 ASN " + todos.asnCreatableOrders().size() + " 条，可结算收货 " + todos.settlementReceipts().size() + " 条");
+    }
+
+    private ToolExecution queryPendingOrders(String vendorId) {
+        TodayTodoData todos = todayTodoData(vendorId);
+        Map<String, Object> data = todoData(todos);
+        data.put("records", todos.pendingOrders());
+        return new ToolExecution(data, "查询到 " + todos.pendingOrders().size() + " 条今日待交订单");
+    }
+
+    private ToolExecution queryAsnCreatable(String vendorId) {
+        TodayTodoData todos = todayTodoData(vendorId);
+        Map<String, Object> data = todoData(todos);
+        data.put("records", todos.asnCreatableOrders());
+        return new ToolExecution(data, "查询到 " + todos.asnCreatableOrders().size() + " 条今日可创建 ASN 订单行");
+    }
+
+    private ToolExecution querySettlementReceipts(String vendorId) {
+        TodayTodoData todos = todayTodoData(vendorId);
+        Map<String, Object> data = todoData(todos);
+        data.put("records", todos.settlementReceipts());
+        return new ToolExecution(data, "查询到 " + todos.settlementReceipts().size() + " 条可结算收货凭证");
+    }
+
+    private TodayTodoData todayTodoData(String vendorId) {
         LocalDate today = LocalDate.now(BUSINESS_TIME_ZONE);
         LocalDate dueDate = today.plusDays(7);
-        List<Map<String, Object>> pendingOrders = portal.agentPurchaseOrders(vendorId).stream()
+        List<JsonNode> orderRows = portal.agentPurchaseOrders(vendorId);
+        List<Map<String, Object>> pendingOrders = orderRows.stream()
                 .filter(this::isPendingOrder)
                 .filter(row -> isDueOnOrBefore(row.path("DeliveryDate").asText(), dueDate))
                 .map(this::orderView)
                 .toList();
-        List<Map<String, Object>> asnCreatableOrders = portal.agentPurchaseOrders(vendorId).stream()
+        List<Map<String, Object>> asnCreatableOrders = orderRows.stream()
                 .filter(this::isPendingOrder)
                 .filter(row -> isDueOnOrBefore(row.path("DeliveryDate").asText(), dueDate))
                 .filter(row -> "0004".equals(row.path("SupplierConfirmationControlKey").asText().trim()))
@@ -225,13 +259,17 @@ public class SupplierCollaborationAgent {
                 .filter(row -> decimal(String.valueOf(row.get("remainingQuantity"))) > 0)
                 .map(this::settlementView)
                 .toList();
+        return new TodayTodoData(today, dueDate, pendingOrders, asnCreatableOrders, settlementReceipts);
+    }
+
+    private Map<String, Object> todoData(TodayTodoData todos) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("today", today.toString());
-        data.put("dueDate", dueDate.toString());
-        data.put("pendingOrders", pendingOrders);
-        data.put("asnCreatableOrders", asnCreatableOrders);
-        data.put("settlementReceipts", settlementReceipts);
-        return new ToolExecution(data, "今日待办：待交订单 " + pendingOrders.size() + " 条，可创建 ASN " + asnCreatableOrders.size() + " 条，可结算收货 " + settlementReceipts.size() + " 条");
+        data.put("today", todos.today().toString());
+        data.put("dueDate", todos.dueDate().toString());
+        data.put("pendingOrders", todos.pendingOrders());
+        data.put("asnCreatableOrders", todos.asnCreatableOrders());
+        data.put("settlementReceipts", todos.settlementReceipts());
+        return data;
     }
 
     private List<ExecutedTool> executeTools(List<DeepSeekChatClient.ToolCall> calls, String vendorId) {
@@ -294,6 +332,9 @@ public class SupplierCollaborationAgent {
         boolean mentionsInvoice = containsAny(text, "预制发票", "供应商发票", "创建发票", "开票", "结算");
         if (createIntent && mentionsAsn && !mentionsInvoice && !purchaseOrder.isBlank()) return new DirectRoute("prepare_asn_draft", "", "", purchaseOrder);
         if (createIntent && mentionsInvoice && !mentionsAsn) return new DirectRoute("prepare_invoice_draft", "", "", purchaseOrder);
+        if (containsAny(text, "待交订单", "待交货的采购订单", "待交货订单")) return new DirectRoute("query_pending_orders", "", "", "");
+        if (containsAny(text, "可结算收货", "可结算的收货凭证")) return new DirectRoute("query_settlement_receipts", "", "", "");
+        if (createIntent && mentionsAsn && !mentionsInvoice) return new DirectRoute("query_asn_creatable", "", "", "");
 
         boolean receiptTopic = containsAny(text, "收货凭证", "物料凭证", "移动类型", "过账日期");
         boolean asnTopic = containsAny(text, "asn", "送货单", "内向交货", "外向交货", "供应商发运单号", "发运状态");
@@ -329,6 +370,9 @@ public class SupplierCollaborationAgent {
         String source = switch (toolName) {
             case "query_purchase_orders" -> "已按 SAP 采购订单 API 查询当前供应商范围";
             case "query_today_todos" -> "已按今日待办规则完成当前供应商范围核对";
+            case "query_pending_orders" -> "已按今日待办的待交订单规则完成核对";
+            case "query_asn_creatable" -> "已按今日待办的可创建 ASN 规则完成核对";
+            case "query_settlement_receipts" -> "已按今日待办的可结算收货规则完成核对";
             case "query_goods_receipts" -> "已按 SAP 收货凭证 API 查询当前供应商范围";
             case "query_asn_status" -> "已按 SAP ASN / 送货单 API 查询当前供应商范围";
             case "query_settlement_candidates" -> "已按 SAP 收货凭证、发票与采购订单数据完成结算查询";
@@ -509,7 +553,18 @@ public class SupplierCollaborationAgent {
         appendTodoOrders(result, "待交订单", (List<Map<String, Object>>) data.getOrDefault("pendingOrders", List.of()), false);
         appendTodoOrders(result, "可创建 ASN", (List<Map<String, Object>>) data.getOrDefault("asnCreatableOrders", List.of()), true);
         List<Map<String, Object>> settlementReceipts = (List<Map<String, Object>>) data.getOrDefault("settlementReceipts", List.of());
-        result.append("\n\n可结算收货（").append(settlementReceipts.size()).append(" 条）：");
+        result.append("\n\n").append(todaySettlementContext(settlementReceipts, data));
+        return result.toString();
+    }
+
+    private static String todayTodoCategoryContext(String title, List<Map<String, Object>> records, Map<String, Object> data, boolean asnCreatable) {
+        StringBuilder result = new StringBuilder(title).append("（").append(records.size()).append(" 条，订单交期截至 ").append(data.getOrDefault("dueDate", "")).append("）：");
+        appendTodoOrderDetails(result, records, asnCreatable);
+        return result.toString();
+    }
+
+    private static String todaySettlementContext(List<Map<String, Object>> settlementReceipts, Map<String, Object> data) {
+        StringBuilder result = new StringBuilder("可结算收货（").append(settlementReceipts.size()).append(" 条）：");
         if (settlementReceipts.isEmpty()) result.append("\n- 当前无可结算收货凭证。");
         else for (Map<String, Object> record : settlementReceipts) result.append("\n- ").append(contextRecord("query_settlement_candidates", record));
         result.append("\n操作路径：业务协同 → 结算对账 → 筛选并勾选可结算收货行 → 基于已选行创建发票 → 核对表单并提交。");
@@ -518,6 +573,10 @@ public class SupplierCollaborationAgent {
 
     private static void appendTodoOrders(StringBuilder result, String title, List<Map<String, Object>> records, boolean asnCreatable) {
         result.append("\n\n").append(title).append("（").append(records.size()).append(" 条）：");
+        appendTodoOrderDetails(result, records, asnCreatable);
+    }
+
+    private static void appendTodoOrderDetails(StringBuilder result, List<Map<String, Object>> records, boolean asnCreatable) {
         if (records.isEmpty()) result.append("\n- 当前无符合条件的订单行。");
         else for (Map<String, Object> record : records) {
             result.append("\n- ").append(contextRecord("query_purchase_orders", record));
@@ -549,6 +608,9 @@ public class SupplierCollaborationAgent {
         return switch (name) {
             case "query_purchase_orders" -> "采购订单查询";
             case "query_today_todos" -> "今日待办核对";
+            case "query_pending_orders" -> "今日待交订单查询";
+            case "query_asn_creatable" -> "今日可创建 ASN 查询";
+            case "query_settlement_receipts" -> "今日可结算收货查询";
             case "query_goods_receipts" -> "收货凭证查询";
             case "query_asn_status" -> "ASN / 发运查询";
             case "query_settlement_candidates" -> "收货结算查询";
@@ -565,6 +627,7 @@ public class SupplierCollaborationAgent {
     private int decimal(String value) { try { return new java.math.BigDecimal(value).signum(); } catch (Exception ignored) { return 0; } }
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception exception) { return "{\"error\":\"工具结果序列化失败\"}"; } }
     static record DirectRoute(String toolName, String keyword, String status, String purchaseOrder) { }
+    private record TodayTodoData(LocalDate today, LocalDate dueDate, List<Map<String, Object>> pendingOrders, List<Map<String, Object>> asnCreatableOrders, List<Map<String, Object>> settlementReceipts) { }
     private record ExecutedTool(DeepSeekChatClient.ToolCall call, ToolExecution execution) { }
     private record ToolExecution(Map<String, Object> data, String summary) { }
 }

@@ -10,6 +10,30 @@
   {
     "type": "function",
     "function": {
+      "name": "query_pending_orders",
+      "description": "按今日待办的统一口径查询当前供应商待交订单：订单状态非已完成，且交期在今天至今天加 7 天（含）范围内。返回具体订单行与采购订单页面操作路径。",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_asn_creatable",
+      "description": "按今日待办的统一口径查询当前供应商可创建 ASN 的订单行：待交订单中 SupplierConfirmationControlKey 等于 0004、非退货订单且可发运量大于零。返回具体订单行与创建 ASN 的 Portal 操作路径。",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_settlement_receipts",
+      "description": "按今日待办的统一口径查询当前供应商可结算收货：结算对账结果中状态为可结算且剩余可结算数量大于零的收货凭证。返回具体收货凭证与创建预制发票的 Portal 操作路径。",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "query_purchase_orders",
       "description": "通过 SAP 采购订单 API 查询当前供应商的订单行、交期、订单数量，以及组合计算后的已收货数量、未清 ASN 数量和可发运量。",
       "parameters": {
