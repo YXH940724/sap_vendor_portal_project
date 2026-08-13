@@ -67,9 +67,9 @@ mvn -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
 
 可选权限包括：`ORDER_READ`、`ASN_READ`、`ASN_CREATE`、`GOODS_RECEIPT_READ`、`SETTLEMENT_READ`、`INVOICE_CREATE`、`PRINT`、`SUPPLIER_PROFILE_READ`、`AI_QUERY`。登录后，Portal 以 HttpOnly、SameSite=Strict 会话 Cookie 绑定该账号，所有 SAP 查询强制使用授权记录中的供应商编码；未授予的页面、ASN 创建、预制发票创建与 AI 查询会被服务端拒绝。
 
-## 无数据库的账号与权限管理
+## 企业身份代理模式（可选）
 
-开发模式可通过 `PORTAL_AUTH_MODE=single_vendor` + `PORTAL_VENDOR_ID` 将一个部署实例固定在单个供应商范围。生产多供应商模式使用：
+Portal 默认且推荐使用飞书多维表格登录。已取消 `single_vendor` 固定供应商模式，浏览器访问必须先完成供应商登录，供应商范围仅来自已登录账号的授权记录。企业如已具备 IAM/CIAM，可改为身份代理模式：
 
 ```text
 供应商 → 企业 IAM/CIAM（登录/MFA） → 身份代理（签名供应商范围） → Portal → SAP OData

@@ -20,7 +20,6 @@ public class VendorScopeResolver {
     public VendorScopeResolver(PortalProperties properties, PortalLoginService loginService) { this.properties = properties; this.loginService = loginService; }
 
     public VendorScope resolve(HttpServletRequest request) {
-        if ("single_vendor".equals(properties.getAuthMode())) return new VendorScope(properties.getVendorId(), "server_environment");
         if ("lark_bitable".equals(properties.getAuthMode())) {
             PortalLoginService.Principal principal = loginService.require(request);
             return new VendorScope(principal.vendorId(), "lark_bitable", principal.account(), principal.vendorName(), principal.purchasingOrganizations(), principal.companyCodes(), principal.plants(), principal.permissions());

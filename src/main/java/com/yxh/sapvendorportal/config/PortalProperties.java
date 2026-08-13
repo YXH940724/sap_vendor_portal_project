@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "portal")
 public class PortalProperties {
-    private String authMode = "single_vendor";
+    private String authMode = "lark_bitable";
     private String vendorId;
     private String identityHmacSecret;
     private final Bitable bitable = new Bitable();
@@ -22,10 +22,10 @@ public class PortalProperties {
     public Ai getAi() { return ai; }
 
     public String validationIssue() {
-        if (!"single_vendor".equals(authMode) && !"proxy_hmac".equals(authMode) && !"lark_bitable".equals(authMode)) return "PORTAL_AUTH_MODE 仅支持 single_vendor、proxy_hmac 或 lark_bitable。";
-        if ("single_vendor".equals(authMode) && blank(vendorId)) return "尚未配置 PORTAL_VENDOR_ID。";
+        if ("single_vendor".equals(authMode)) return "已取消 single_vendor 固定供应商模式，请使用 PORTAL_AUTH_MODE=lark_bitable。";
+        if (!"proxy_hmac".equals(authMode) && !"lark_bitable".equals(authMode)) return "PORTAL_AUTH_MODE 仅支持 lark_bitable 或 proxy_hmac。";
         if ("proxy_hmac".equals(authMode) && blank(identityHmacSecret)) return "尚未配置 PORTAL_IDENTITY_HMAC_SECRET。";
-        if ("lark_bitable".equals(authMode) && (blank(bitable.appId) || blank(bitable.appSecret) || blank(bitable.appToken) || blank(bitable.tableId) || blank(bitable.sessionSecret))) return "飞书多维表格登录模式需要配置 LARK_APP_ID、LARK_APP_SECRET、LARK_BITABLE_APP_TOKEN、LARK_BITABLE_LOGIN_TABLE_ID 和 PORTAL_SESSION_SECRET。";
+        if ("lark_bitable".equals(authMode) && !bitableLoginIssue().isBlank()) return bitableLoginIssue();
         if (!"basic".equals(sap.authMode) && !"bearer".equals(sap.authMode)) return "SAP_AUTH_MODE 仅支持 basic 或 bearer。";
         if ("basic".equals(sap.authMode) && (blank(sap.username) || blank(sap.password))) return "尚未配置 SAP_USERNAME 或 SAP_PASSWORD。";
         if ("bearer".equals(sap.authMode) && blank(sap.bearerToken)) return "尚未配置 SAP_BEARER_TOKEN。";
@@ -36,6 +36,12 @@ public class PortalProperties {
             if (!"direct".equals(service.scopeMode) && blank(service.referenceField)) return "关联范围查询尚未配置关联字段；为防止越权查询，已拒绝调用。";
         }
         return null;
+    }
+
+    /** 仅校验登录所需的飞书配置，避免把 SAP 连接问题误提示为登录失败。 */
+    public String bitableLoginIssue() {
+        if (blank(bitable.appId) || blank(bitable.appSecret) || blank(bitable.appToken) || blank(bitable.tableId) || blank(bitable.sessionSecret)) return "飞书多维表格登录模式需要配置 LARK_APP_ID、LARK_APP_SECRET、LARK_BITABLE_APP_TOKEN、LARK_BITABLE_LOGIN_TABLE_ID 和 PORTAL_SESSION_SECRET。";
+        return "";
     }
 
     private boolean blank(String value) { return value == null || value.isBlank(); }

@@ -497,7 +497,8 @@ class PortalServiceImplTest {
 
     private PortalProperties configuredProperties() {
         PortalProperties properties = new PortalProperties();
-        properties.setVendorId("133000006");
+        properties.setAuthMode("lark_bitable");
+        properties.getBitable().setAppId("cli_test"); properties.getBitable().setAppSecret("test-secret"); properties.getBitable().setAppToken("TaTest"); properties.getBitable().setTableId("tblTest"); properties.getBitable().setSessionSecret("test-session-secret");
         properties.getSap().setUsername("test");
         properties.getSap().setPassword("test");
         configureDirect(properties.getSap().getBusinessPartner(), "A_BusinessPartner");

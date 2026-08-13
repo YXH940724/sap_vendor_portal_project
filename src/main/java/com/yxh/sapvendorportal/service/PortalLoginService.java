@@ -36,7 +36,7 @@ public class PortalLoginService {
     public PortalLoginService(PortalProperties properties, LarkBitableClient bitable) { this.properties = properties; this.bitable = bitable; }
 
     public LoginResult login(String account, String password) {
-        if (!"lark_bitable".equals(properties.getAuthMode())) throw unauthorized("当前环境未启用飞书多维表格登录模式。");
+        if (!configurationIssue().isBlank()) throw unauthorized(configurationIssue());
         if (blank(account) || blank(password)) throw unauthorized("请输入登录账号和密码。");
         Principal principal = null;
         for (JsonNode item : bitable.loginRecords()) {
@@ -72,6 +72,12 @@ public class PortalLoginService {
 
     public void logout(HttpServletRequest request) { sessions.remove(verifiedSessionId(cookie(request, SESSION_COOKIE))); }
     public boolean isBitableMode() { return "lark_bitable".equals(properties.getAuthMode()); }
+    public boolean isProxyMode() { return "proxy_hmac".equals(properties.getAuthMode()); }
+    public String configurationIssue() {
+        if (isProxyMode()) return "";
+        if (!isBitableMode()) return "供应商浏览器登录仅支持飞书多维表格模式，请设置 PORTAL_AUTH_MODE=lark_bitable。";
+        return properties.bitableLoginIssue();
+    }
 
     private Principal principal(String account, JsonNode fields) {
         String vendorId = text(fields, "供应商编码");

@@ -11,7 +11,7 @@ spring:
   jackson:
     default-property-inclusion: non_null
 portal:
-  auth-mode: ${PORTAL_AUTH_MODE:single_vendor}
+  auth-mode: ${PORTAL_AUTH_MODE:lark_bitable}
   vendor-id: ${PORTAL_VENDOR_ID:}
   identity-hmac-secret: ${PORTAL_IDENTITY_HMAC_SECRET:}
   bitable:

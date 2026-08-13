@@ -46,6 +46,18 @@ class PortalLoginServiceTest {
                 .hasMessageContaining("账号、密码或授权状态无效");
     }
 
+    @Test
+    void rejectsRetiredSingleVendorModeWithActionableConfigurationMessage() {
+        PortalProperties properties = new PortalProperties();
+        properties.setAuthMode("single_vendor");
+        PortalLoginService service = new PortalLoginService(properties, mock(LarkBitableClient.class));
+
+        assertThat(service.configurationIssue()).contains("PORTAL_AUTH_MODE=lark_bitable");
+        assertThatThrownBy(() -> service.login("vendor.operator", "Portal!2026"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("PORTAL_AUTH_MODE=lark_bitable");
+    }
+
     private PortalProperties bitableProperties() {
         PortalProperties properties = new PortalProperties();
         properties.setAuthMode("lark_bitable");

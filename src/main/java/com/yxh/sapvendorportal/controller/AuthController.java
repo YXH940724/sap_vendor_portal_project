@@ -24,7 +24,9 @@ public class AuthController {
 
     @GetMapping("/session")
     public Map<String, Object> session(HttpServletRequest request) {
-        if (!loginService.isBitableMode()) return Map.of("required", false, "authenticated", true);
+        if (loginService.isProxyMode()) return Map.of("required", false, "authenticated", true);
+        String configurationIssue = loginService.configurationIssue();
+        if (!configurationIssue.isBlank()) return Map.of("required", true, "authenticated", false, "configurationIssue", configurationIssue);
         if (!loginService.authenticated(request)) return Map.of("required", true, "authenticated", false);
         var principal = loginService.require(request);
         return Map.of("required", true, "authenticated", true, "account", principal.account(), "vendorId", principal.vendorId(), "vendorName", principal.vendorName(), "permissions", principal.permissions());
