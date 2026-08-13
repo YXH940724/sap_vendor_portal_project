@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -93,6 +94,8 @@ public class PortalServiceImpl implements PortalService {
         ));
         result.put("orderStatus", distribution(orders, "PurchaseOrderStatus", "OverallStatus", "Status"));
         result.put("asnStatus", distribution(asns, "OverallStatus", "InbDeliveryStatus", "Status"));
+        result.put("settlementStatus", settlementStatusDistribution(settlementLines));
+        result.put("purchaseManagementMetrics", purchaseManagementMetrics(orders, receipts));
         result.put("dataIssues", issues(Map.of("采购订单", ordersResult, "ASN / 发运", asnsResult, "收货凭证", receiptsResult, "结算对账", invoicesResult)));
         result.put("retrievedAt", Instant.now().toString());
         return result;
@@ -172,6 +175,71 @@ public class PortalServiceImpl implements PortalService {
         values.entrySet().stream().limit(5).forEach(entry -> result.add(Map.of("label", entry.getKey(), "value", entry.getValue())));
         return result;
     }
+    private List<Map<String, Object>> settlementStatusDistribution(Collection<ReconciliationLine> lines) {
+        Map<String, Integer> values = new LinkedHashMap<>();
+        lines.stream().filter(this::isReconciliationPoolLine).forEach(line -> values.merge(line.settlementStatus(), 1, Integer::sum));
+        return values.entrySet().stream().map(entry -> Map.<String, Object>of("label", entry.getKey(), "value", entry.getValue())).toList();
+    }
+    private List<Map<String, Object>> purchaseManagementMetrics(List<JsonNode> orders, List<JsonNode> receipts) {
+        List<JsonNode> activeOrders = orders.stream().filter(this::isActiveOrderLine).toList();
+        long fulfilled = activeOrders.stream().filter(this::isFulfilledOrderLine).count();
+        Map<String, LocalDate> actualReceiptDates = latestReceiptDates(receipts);
+        long deliveryEligible = activeOrders.stream()
+                .filter(this::isFulfilledOrderLine)
+                .filter(order -> parseBusinessDate(firstText(order, "DeliveryDate")) != null)
+                .filter(order -> actualReceiptDates.containsKey(purchaseOrderLineKey(order)))
+                .count();
+        long onTime = activeOrders.stream()
+                .filter(this::isFulfilledOrderLine)
+                .filter(order -> {
+                    LocalDate planned = parseBusinessDate(firstText(order, "DeliveryDate"));
+                    LocalDate actual = actualReceiptDates.get(purchaseOrderLineKey(order));
+                    return planned != null && actual != null && !actual.isAfter(planned);
+                }).count();
+        return List.of(
+                rateMetric("供应商交付准时率", onTime, deliveryEligible,
+                        "按时完成交付行 ÷ 已完成且具有交期与实际收货日期的订单行 × 100%",
+                        "实际收货日期取 SAP 收货凭证（101）的过账日期，并与订单交期比较。"),
+                rateMetric("采购订单履约率", fulfilled, activeOrders.size(),
+                        "已完成有效订单行 ÷ 全部有效订单行 × 100%",
+                        "有效订单行不含已取消行；已完成取完全交付标识或已收货数量达到订单数量。")
+        );
+    }
+    private Map<String, Object> rateMetric(String label, long numerator, long denominator, String formula, String note) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("label", label);
+        result.put("value", denominator == 0 ? "—" : BigDecimal.valueOf(numerator).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(denominator), 1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() + "%");
+        result.put("numerator", numerator);
+        result.put("denominator", denominator);
+        result.put("formula", formula);
+        result.put("note", note);
+        return result;
+    }
+    private Map<String, LocalDate> latestReceiptDates(Collection<JsonNode> receipts) {
+        Map<String, LocalDate> dates = new LinkedHashMap<>();
+        for (JsonNode receipt : receipts) {
+            if (!"101".equals(firstText(receipt, "GoodsMovementType"))) continue;
+            LocalDate postingDate = parseBusinessDate(firstText(receipt, "PostingDate"));
+            if (postingDate == null) continue;
+            dates.merge(purchaseOrderLineKey(receipt), postingDate, (left, right) -> left.isAfter(right) ? left : right);
+        }
+        return dates;
+    }
+    private LocalDate parseBusinessDate(String rawDate) {
+        if (rawDate == null || rawDate.length() < 10) return null;
+        try { return LocalDate.parse(rawDate.substring(0, 10)); }
+        catch (Exception ignored) { return null; }
+    }
+    private boolean isActiveOrderLine(JsonNode order) {
+        return firstText(order, "PurchasingDocumentDeletionCode").isBlank() && !normalizedStatus(firstText(order, "PurchaseOrderStatus")).contains("已取消");
+    }
+    private boolean isFulfilledOrderLine(JsonNode order) {
+        if (isCompletelyDelivered(order)) return true;
+        BigDecimal ordered = firstDecimal(order, "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity");
+        BigDecimal received = firstDecimal(order, "ReceivedQuantity");
+        return ordered != null && ordered.signum() > 0 && received != null && received.compareTo(ordered) >= 0;
+    }
+    private String normalizedStatus(String value) { return value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT); }
     private List<JsonNode> load(String resourceName, String vendorId, String search, int top, List<String> purchaseOrders) {
         String references = purchaseOrders == null || purchaseOrders.isEmpty() ? "" : String.join(",", purchaseOrders.stream().sorted().toList());
         String variant = "top=" + top + ";search=" + (search == null ? "" : search) + ";orders=" + references;

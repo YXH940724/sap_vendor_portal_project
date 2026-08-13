@@ -41,8 +41,8 @@ class PortalServiceImplTest {
         });
         when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
             PortalProperties.Service service = invocation.getArgument(0);
-            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"OrderQuantity\":4,\"PurchaseOrderQuantityUnit\":\"EA\",\"DocumentCurrency\":\"CNY\"}"));
-            if ("A_MaterialDocumentItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000002001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":4,\"EntryUnit\":\"EA\"}"));
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"OrderQuantity\":4,\"PurchaseOrderQuantityUnit\":\"EA\",\"DeliveryDate\":\"2026-08-20\",\"DocumentCurrency\":\"CNY\"}"));
+            if ("A_MaterialDocumentItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000002001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"PostingDate\":\"2026-08-18\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":4,\"EntryUnit\":\"EA\"}"));
             return List.of();
         });
         PortalServiceImpl service = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
@@ -53,6 +53,11 @@ class PortalServiceImplTest {
         @SuppressWarnings("unchecked") List<Map<String, Object>> metrics = (List<Map<String, Object>>) dashboard.get("metrics");
         Map<String, Object> settlementMetric = metrics.stream().filter(metric -> "IV".equals(metric.get("code"))).findFirst().orElseThrow();
         assertThat(settlementMetric).containsEntry("label", "可结算收货").containsEntry("value", reconciliation.get("count"));
+        @SuppressWarnings("unchecked") List<Map<String, Object>> purchaseMetrics = (List<Map<String, Object>>) dashboard.get("purchaseManagementMetrics");
+        assertThat(purchaseMetrics).extracting(metric -> metric.get("label"))
+                .containsExactly("供应商交付准时率", "采购订单履约率");
+        assertThat(purchaseMetrics).allSatisfy(metric -> assertThat(metric.get("formula").toString()).contains("÷"));
+        assertThat(purchaseMetrics.getFirst()).containsEntry("value", "100%").containsEntry("numerator", 1L).containsEntry("denominator", 1L);
     }
 
     @Test
