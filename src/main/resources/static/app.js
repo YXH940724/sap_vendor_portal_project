@@ -37,7 +37,7 @@ const statusOptions = {
   asns: ['未处理', '部分处理', '已完成', '已取消'],
   materialDocuments: ['收货', '收货冲销', '部分退回', '部分退回冲销', '退货', '退货冲销']
 };
-let currentRoute = 'dashboard'; let records = []; let vendorId = '—'; let currentPage = 1; const pageSize = 10; const selectedOrderLines = new Map(); const selectedAsnLines = new Map(); const selectedReceiptLines = new Map(); const aiHistory = []; const sapDataCache = new Map();
+let currentRoute = 'dashboard'; let records = []; let vendorId = '—'; let currentPage = 1; const pageSize = 10; const selectedOrderLines = new Map(); const selectedAsnLines = new Map(); const selectedReceiptLines = new Map(); const aiHistory = []; const sapDataCache = new Map(); let aiInitialized = false; let aiVendorScope = '';
 const $ = (selector) => document.querySelector(selector); const page = $('#pageContainer');
 
 document.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', () => navigate(item.dataset.route)));
@@ -46,8 +46,8 @@ $('#loginForm').addEventListener('submit', submitLogin); $('#logoutButton').addE
 $('#closeDrawer').addEventListener('click', closeDrawer); $('#drawerOverlay').addEventListener('click', closeDrawer); $('#closeModal').addEventListener('click', closeModal); $('#cancelModal').addEventListener('click', closeModal); $('#asnForm').addEventListener('submit', submitAsn); $('#closeInvoiceModal').addEventListener('click', closeInvoiceModal); $('#cancelInvoiceModal').addEventListener('click', closeInvoiceModal); $('#invoiceForm').addEventListener('submit', submitInvoice);
 
 async function boot() {
-  try { const auth = await api('/api/auth/session'); if (auth.required && !auth.authenticated) return showLogin(auth.configurationIssue || ''); $('#loginGate').hidden = true; $('#portalApp').hidden = false; $('#aiAssistantFloat').hidden = false; $('#portalUserName').textContent = auth.account || '供应商用户'; $('#logoutButton').hidden = !auth.required; const [health, session] = await Promise.all([api('/api/health'), api('/api/session')]); vendorId = session.vendorId; const source = session.identitySource === 'lark_bitable' ? '飞书授权' : '身份代理'; $('#vendorScope').textContent = `${source} · 供应商 ${vendorId}`; $('#vendorName').textContent = auth.vendorName || '供应商工作空间'; $('#connectionLabel').textContent = health.configured ? '已就绪' : '待配置'; } catch (error) { $('#connectionLabel').textContent = '连接异常'; showLogin(error.message); return; }
-  initAiAssistant(); navigate(location.hash.replace('#/', '') || 'dashboard');
+  try { const auth = await api('/api/auth/session'); if (auth.required && !auth.authenticated) return showLogin(auth.configurationIssue || ''); $('#loginGate').hidden = true; $('#portalApp').hidden = false; $('#aiAssistantFloat').hidden = false; $('#portalUserName').textContent = auth.account || '供应商用户'; $('#logoutButton').hidden = !auth.required; const [health, session] = await Promise.all([api('/api/health'), api('/api/session')]); vendorId = session.vendorId; const source = session.identitySource === 'lark_bitable' ? '飞书授权' : '身份代理'; $('#vendorScope').textContent = `${source} · 供应商 ${vendorId}`; $('#vendorName').textContent = auth.vendorName || '供应商工作空间'; $('#connectionLabel').textContent = health.configured ? '已就绪' : '待配置'; activateAiAssistant(vendorId); } catch (error) { $('#connectionLabel').textContent = '连接异常'; showLogin(error.message); return; }
+  navigate(location.hash.replace('#/', '') || 'dashboard');
 }
 function showLogin(message = '') { $('#portalApp').hidden = true; $('#aiAssistantFloat').hidden = true; $('#aiAssistant').hidden = true; $('#aiAssistant').setAttribute('aria-hidden', 'true'); $('#loginGate').hidden = false; $('#loginMessage').textContent = message; $('#loginAccount').focus(); }
 async function submitLogin(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const message = $('#loginMessage'); const button = event.currentTarget.querySelector('button'); message.textContent = '正在验证账号与授权范围…'; button.disabled = true; try { await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ account: form.get('account'), password: form.get('password') }) }); $('#loginPassword').value = ''; await boot(); } catch (error) { message.textContent = error.message; } finally { button.disabled = false; } }
@@ -260,6 +260,15 @@ function displayStatus(raw) { const text = value(raw); const status = { '01': '�
 function displayInvoiceStatus(raw) { const text = value(raw).toUpperCase(); return { A: '预制', B: '预制完成', D: '暂存', '5': '已过账' }[text] || displayStatus(raw); }
 function tone(status) { return /逾期|异常|取消/.test(status) ? 'danger' : /待/.test(status) ? 'warning' : /完成|确认|收货|对账/.test(status) ? 'success' : 'info'; }
 function present(value) { return value !== null && value !== undefined && value !== ''; } function value(value) { return !present(value) ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); } function escape(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); } function escapeAttr(value) { return escape(value === '—' ? '' : value); }
+function activateAiAssistant(scope) {
+  if (!aiInitialized) { initAiAssistant(); aiInitialized = true; }
+  if (aiVendorScope !== String(scope)) { aiVendorScope = String(scope); aiHistory.length = 0; resetAiConversation(); }
+}
+function resetAiConversation() {
+  const conversation = $('#aiConversation');
+  conversation.replaceChildren();
+  appendAiMessage('agent', `当前已切换至供应商 ${aiVendorScope}。我只会查询该供应商已授权的 SAP 数据；此前对话记录已清空。`);
+}
 function initAiAssistant() {
   const floating = $('#aiAssistantFloat'); const launcher = $('#aiAssistantLauncher'); const moveHandle = $('#aiAssistantMove'); const compact = $('#aiAssistantCompact'); const assistant = $('#aiAssistant'); const close = $('#aiAssistantClose'); const form = $('#aiChatForm'); const input = $('#aiChatInput'); const status = $('#aiConnectionState'); const launcherStatus = $('#aiLauncherStatus'); let dragState;
   const setCompact = (enabled) => { floating.classList.toggle('compact', enabled); compact.textContent = enabled ? '+' : '−'; compact.setAttribute('aria-label', enabled ? '还原 AI 助手图标' : '缩小 AI 助手图标'); compact.title = enabled ? '还原图标' : '缩小图标'; try { localStorage.setItem('portal-ai-compact', String(enabled)); } catch { } requestAnimationFrame(() => { if (!floating.style.left) return; const rect = floating.getBoundingClientRect(); applyPosition(rect.left, rect.top, true); }); };
