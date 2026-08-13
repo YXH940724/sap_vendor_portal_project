@@ -41,4 +41,30 @@ class AgentDefinitionLoaderTest {
         assertThat(SupplierCollaborationAgent.executionContext("query_purchase_orders", purchaseOrderData)).contains("00010").contains("00020").doesNotContain("操作路径");
         assertThat(SupplierCollaborationAgent.executionContext("prepare_asn_draft", asnDraftData)).contains("操作路径").contains("创建 ASN");
     }
+
+    @Test
+    void routesSingleTopicStandardRequestsWithoutWaitingForToolSelectionModelCall() {
+        var orderRoute = SupplierCollaborationAgent.directRoute("查询采购订单 4500000001 的交期和可发运量");
+        var receiptRoute = SupplierCollaborationAgent.directRoute("查询订单 4500000001 的收货凭证");
+        var asnRoute = SupplierCollaborationAgent.directRoute("查询 ASN 送货单 4500000001");
+        var invoiceRoute = SupplierCollaborationAgent.directRoute("查询采购订单 4500000001 的可结算数量");
+        var asnDraftRoute = SupplierCollaborationAgent.directRoute("准备按采购订单 4500000001 创建 ASN");
+        var invoiceDraftRoute = SupplierCollaborationAgent.directRoute("准备创建采购订单 4500000001 的预制发票");
+
+        assertThat(orderRoute.toolName()).isEqualTo("query_purchase_orders");
+        assertThat(orderRoute.keyword()).isEqualTo("4500000001");
+        assertThat(receiptRoute.toolName()).isEqualTo("query_goods_receipts");
+        assertThat(asnRoute.toolName()).isEqualTo("query_asn_status");
+        assertThat(invoiceRoute.toolName()).isEqualTo("query_settlement_candidates");
+        assertThat(invoiceRoute.status()).isEqualTo("可结算");
+        assertThat(asnDraftRoute.toolName()).isEqualTo("prepare_asn_draft");
+        assertThat(asnDraftRoute.purchaseOrder()).isEqualTo("4500000001");
+        assertThat(invoiceDraftRoute.toolName()).isEqualTo("prepare_invoice_draft");
+    }
+
+    @Test
+    void keepsMultiTopicRequestsForModelReasoning() {
+        assertThat(SupplierCollaborationAgent.directRoute("查询采购订单 4500000001 的 ASN 状态和可结算数量")).isNull();
+        assertThat(SupplierCollaborationAgent.directRoute("创建 ASN 和预制发票")).isNull();
+    }
 }

@@ -10,6 +10,8 @@ import com.yxh.sapvendorportal.service.PortalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,11 +20,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class SupplierCollaborationAgent {
-    private static final int MAX_HISTORY_MESSAGES = 8;
-    private static final int MAX_TOOL_ROUNDS = 3;
+    private static final Logger log = LoggerFactory.getLogger(SupplierCollaborationAgent.class);
+    private static final int MAX_HISTORY_MESSAGES = 4;
+    private static final int MAX_HISTORY_MESSAGE_LENGTH = 800;
+    private static final int MAX_NORMAL_TOOL_ROUNDS = 2;
+    private static final int MAX_FALLBACK_TOOL_ROUNDS = 1;
+    private static final int MAX_PARALLEL_TOOL_CALLS = 3;
+    private static final int MAX_MODEL_RECORDS_PER_TOOL = 5;
+    private static final Pattern PURCHASE_ORDER_NUMBER = Pattern.compile("(?<!\\d)(\\d{10})(?!\\d)");
     private final DeepSeekChatClient deepSeek;
     private final PortalService portal;
     private final ObjectMapper objectMapper;
@@ -40,23 +51,36 @@ public class SupplierCollaborationAgent {
     }
 
     public Map<String, Object> chat(VendorScopeResolver.VendorScope scope, JsonNode input) {
+        long startedNanos = System.nanoTime();
         String question = safeText(input.path("message").asText(), 2000);
         if (question.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入需要协同处理的问题。");
+        DirectRoute directRoute = directRoute(question);
+        if (directRoute != null) return directResponse(scope.vendorId(), directRoute, startedNanos);
+
         ArrayNode messages = initialMessages(input.path("history"), question);
         ArrayNode tools = toolDefinitions();
         List<Map<String, String>> toolSummaries = new ArrayList<>();
         List<String> executedToolNames = new ArrayList<>();
         List<String> executionContexts = new ArrayList<>();
         String answer = "";
-        for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        long modelNanos = 0;
+        long toolNanos = 0;
+        int rounds = 0;
+        int maxRounds = MAX_NORMAL_TOOL_ROUNDS + MAX_FALLBACK_TOOL_ROUNDS;
+        for (int round = 0; round < maxRounds; round++) {
+            rounds++;
+            long modelStartedNanos = System.nanoTime();
             DeepSeekChatClient.Completion completion = deepSeek.complete(messages, tools);
+            modelNanos += System.nanoTime() - modelStartedNanos;
             messages.add(completion.assistantMessage());
             if (completion.toolCalls().isEmpty()) {
                 answer = completion.content();
                 break;
             }
-            for (DeepSeekChatClient.ToolCall call : completion.toolCalls()) {
-                ToolExecution execution = executeTool(call.name(), call.arguments(), scope.vendorId());
+            long toolsStartedNanos = System.nanoTime();
+            for (ExecutedTool executed : executeTools(completion.toolCalls(), scope.vendorId())) {
+                DeepSeekChatClient.ToolCall call = executed.call();
+                ToolExecution execution = executed.execution();
                 executedToolNames.add(call.name());
                 toolSummaries.add(Map.of("name", displayToolName(call.name()), "summary", execution.summary()));
                 String context = executionContext(call.name(), execution.data());
@@ -64,18 +88,22 @@ public class SupplierCollaborationAgent {
                 ObjectNode toolResult = JsonNodeFactory.instance.objectNode();
                 toolResult.put("role", "tool");
                 toolResult.put("tool_call_id", call.id());
-                toolResult.put("content", write(execution.data()));
+                toolResult.put("content", write(modelToolData(execution.data())));
                 messages.add(toolResult);
             }
+            toolNanos += System.nanoTime() - toolsStartedNanos;
         }
         if (answer.isBlank()) answer = fallbackAnswer(executedToolNames);
         if (!executionContexts.isEmpty()) answer = answer + "\n\n" + String.join("\n\n", executionContexts);
-        return Map.of(
+        Map<String, Object> result = Map.of(
                 "content", answer,
                 "tools", toolSummaries,
                 "vendorScope", "当前登录供应商",
                 "retrievedAt", Instant.now().toString()
         );
+        log.info("AI request completed: vendor={}, mode=model, rounds={}, tools={}, modelMs={}, toolMs={}, totalMs={}",
+                scope.vendorId(), rounds, executedToolNames.size(), elapsedMillis(modelNanos), elapsedMillis(toolNanos), elapsedMillis(System.nanoTime() - startedNanos));
+        return result;
     }
 
     private ArrayNode initialMessages(JsonNode history, String question) {
@@ -88,7 +116,7 @@ public class SupplierCollaborationAgent {
             if (count++ >= MAX_HISTORY_MESSAGES) break;
             String role = message.path("role").asText();
             if (!"user".equals(role) && !"assistant".equals(role)) continue;
-            String content = safeText(message.path("content").asText(), 1600);
+            String content = safeText(message.path("content").asText(), MAX_HISTORY_MESSAGE_LENGTH);
             if (!content.isBlank()) messages.addObject().put("role", role).put("content", content);
         }
         messages.addObject().put("role", "user").put("content", question);
@@ -169,6 +197,103 @@ public class SupplierCollaborationAgent {
             return new ToolExecution(Map.of("error", message), "工具调用失败：" + message);
         }
     }
+
+    private List<ExecutedTool> executeTools(List<DeepSeekChatClient.ToolCall> calls, String vendorId) {
+        if (calls.size() <= 1 || calls.size() > MAX_PARALLEL_TOOL_CALLS) {
+            return calls.stream().map(call -> new ExecutedTool(call, executeTool(call.name(), call.arguments(), vendorId))).toList();
+        }
+        List<CompletableFuture<ExecutedTool>> futures = calls.stream()
+                .map(call -> CompletableFuture.supplyAsync(() -> new ExecutedTool(call, executeTool(call.name(), call.arguments(), vendorId))))
+                .toList();
+        return futures.stream().map(CompletableFuture::join).toList();
+    }
+
+    private Map<String, Object> modelToolData(Map<String, Object> data) {
+        Map<String, Object> compact = new LinkedHashMap<>(data);
+        Object recordsValue = data.get("records");
+        if (recordsValue instanceof List<?> records && records.size() > MAX_MODEL_RECORDS_PER_TOOL) {
+            compact.put("records", records.stream().limit(MAX_MODEL_RECORDS_PER_TOOL).toList());
+            compact.put("recordsTruncatedForModel", true);
+            compact.put("totalRecordCount", records.size());
+        }
+        return compact;
+    }
+
+    private Map<String, Object> directResponse(String vendorId, DirectRoute route, long startedNanos) {
+        ToolExecution execution = executeTool(route.toolName(), write(routeArguments(route)), vendorId);
+        String context = executionContext(route.toolName(), execution.data());
+        String answer = directConclusion(route.toolName(), execution.summary());
+        if (!context.isBlank()) answer = answer + "\n\n" + context;
+        log.info("AI request completed: vendor={}, mode=direct, tools=1, totalMs={}", vendorId, elapsedMillis(System.nanoTime() - startedNanos));
+        return Map.of(
+                "content", answer,
+                "tools", List.of(Map.of("name", displayToolName(route.toolName()), "summary", execution.summary())),
+                "vendorScope", "当前登录供应商",
+                "retrievedAt", Instant.now().toString()
+        );
+    }
+
+    private ObjectNode routeArguments(DirectRoute route) {
+        ObjectNode arguments = objectMapper.createObjectNode();
+        if (!route.keyword().isBlank()) arguments.put("keyword", route.keyword());
+        if (!route.status().isBlank()) arguments.put("status", route.status());
+        if (!route.purchaseOrder().isBlank()) arguments.put("purchaseOrder", route.purchaseOrder());
+        return arguments;
+    }
+
+    static DirectRoute directRoute(String question) {
+        String text = normalized(question);
+        String purchaseOrder = extractPurchaseOrder(text);
+        boolean createIntent = containsAny(text, "创建", "新建", "发起", "准备", "我要发运", "我要送货");
+        boolean mentionsAsn = containsAny(text, "asn", "送货单", "内向交货", "外向交货", "发运单", "发运");
+        boolean mentionsInvoice = containsAny(text, "预制发票", "供应商发票", "创建发票", "开票", "结算");
+        if (createIntent && mentionsAsn && !mentionsInvoice && !purchaseOrder.isBlank()) return new DirectRoute("prepare_asn_draft", "", "", purchaseOrder);
+        if (createIntent && mentionsInvoice && !mentionsAsn) return new DirectRoute("prepare_invoice_draft", "", "", purchaseOrder);
+
+        boolean receiptTopic = containsAny(text, "收货凭证", "物料凭证", "移动类型", "过账日期");
+        boolean asnTopic = containsAny(text, "asn", "送货单", "内向交货", "外向交货", "供应商发运单号", "发运状态");
+        boolean settlementTopic = containsAny(text, "已结算", "可结算", "结算", "发票");
+        boolean explicitOrderTopic = containsAny(text, "交期", "可发运", "收货进度", "未清 asn", "未清asn");
+        boolean genericOrderTopic = containsAny(text, "采购订单", "订单") && !receiptTopic && !asnTopic && !settlementTopic;
+        int queryTopics = 0;
+        String queryTool = "";
+        String status = "";
+        if (receiptTopic) { queryTopics++; queryTool = "query_goods_receipts"; }
+        if (asnTopic) { queryTopics++; queryTool = "query_asn_status"; }
+        if (settlementTopic) {
+            queryTopics++; queryTool = "query_settlement_candidates";
+            if (text.contains("已结算")) status = "已结算";
+            else if (text.contains("可结算")) status = "可结算";
+        }
+        if (explicitOrderTopic || genericOrderTopic) { queryTopics++; queryTool = "query_purchase_orders"; }
+        if (queryTopics != 1) return null;
+        return new DirectRoute(queryTool, purchaseOrder, status, "");
+    }
+
+    private static String extractPurchaseOrder(String text) {
+        Matcher matcher = PURCHASE_ORDER_NUMBER.matcher(text);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static boolean containsAny(String text, String... fragments) {
+        for (String fragment : fragments) if (text.contains(fragment)) return true;
+        return false;
+    }
+
+    private static String directConclusion(String toolName, String summary) {
+        String source = switch (toolName) {
+            case "query_purchase_orders" -> "已按 SAP 采购订单 API 查询当前供应商范围";
+            case "query_goods_receipts" -> "已按 SAP 收货凭证 API 查询当前供应商范围";
+            case "query_asn_status" -> "已按 SAP ASN / 送货单 API 查询当前供应商范围";
+            case "query_settlement_candidates" -> "已按 SAP 收货凭证、发票与采购订单数据完成结算查询";
+            case "prepare_asn_draft" -> "已完成 ASN 可发运行校验";
+            case "prepare_invoice_draft" -> "已完成可结算收货行校验";
+            default -> "已完成当前供应商范围的数据校验";
+        };
+        return source + "。" + summary + "。";
+    }
+
+    private static long elapsedMillis(long nanos) { return nanos / 1_000_000L; }
 
     private ToolExecution queryPurchaseOrders(JsonNode input, String vendorId) {
         String keyword = normalized(input.path("keyword").asText());
@@ -347,10 +472,12 @@ public class SupplierCollaborationAgent {
         };
     }
 
-    private String normalized(String value) { return value == null ? "" : value.trim().toLowerCase(Locale.ROOT); }
+    private static String normalized(String value) { return value == null ? "" : value.trim().toLowerCase(Locale.ROOT); }
     private boolean booleanValue(JsonNode row, String... fields) { for (String field : fields) { JsonNode value = row.path(field); if (value.asBoolean(false) || "X".equalsIgnoreCase(value.asText()) || "true".equalsIgnoreCase(value.asText())) return true; } return false; }
     private String safeText(String value, int max) { String text = value == null ? "" : value.trim(); return text.length() > max ? text.substring(0, max) : text; }
     private int decimal(String value) { try { return new java.math.BigDecimal(value).signum(); } catch (Exception ignored) { return 0; } }
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception exception) { return "{\"error\":\"工具结果序列化失败\"}"; } }
+    static record DirectRoute(String toolName, String keyword, String status, String purchaseOrder) { }
+    private record ExecutedTool(DeepSeekChatClient.ToolCall call, ToolExecution execution) { }
     private record ToolExecution(Map<String, Object> data, String summary) { }
 }
