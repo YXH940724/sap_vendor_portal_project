@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -186,23 +187,26 @@ public class PortalServiceImpl implements PortalService {
     private List<Map<String, Object>> purchaseManagementMetrics(List<JsonNode> orders, List<JsonNode> receipts) {
         List<JsonNode> activeOrders = orders.stream().filter(this::isActiveOrderLine).toList();
         long fulfilled = activeOrders.stream().filter(this::isFulfilledOrderLine).count();
-        Map<String, LocalDate> actualReceiptDates = latestReceiptDates(receipts);
-        long deliveryEligible = activeOrders.stream()
-                .filter(this::isFulfilledOrderLine)
-                .filter(order -> parseBusinessDate(firstText(order, "DeliveryDate")) != null)
-                .filter(order -> actualReceiptDates.containsKey(purchaseOrderLineKey(order)))
-                .count();
-        long onTime = activeOrders.stream()
-                .filter(this::isFulfilledOrderLine)
+        LocalDate assessmentDate = LocalDate.now(ZoneOffset.UTC);
+        List<JsonNode> deliveryEligibleOrders = activeOrders.stream()
+                .filter(order -> !isFreePurchaseOrder(order) && !isReturnPurchaseOrder(order))
+                .filter(order -> orderQuantity(order) != null && orderQuantity(order).signum() > 0)
                 .filter(order -> {
-                    LocalDate planned = parseBusinessDate(firstText(order, "DeliveryDate"));
-                    LocalDate actual = actualReceiptDates.get(purchaseOrderLineKey(order));
-                    return planned != null && actual != null && !actual.isAfter(planned);
-                }).count();
+                    LocalDate planned = promisedDeliveryDate(order);
+                    return planned != null && !planned.isAfter(assessmentDate);
+                }).toList();
+        Map<String, BigDecimal> orderQuantities = new LinkedHashMap<>();
+        deliveryEligibleOrders.forEach(order -> orderQuantities.put(purchaseOrderLineKey(order), orderQuantity(order)));
+        Map<String, LocalDate> completionDates = netReceiptCompletionDates(receipts, orderQuantities);
+        long onTime = deliveryEligibleOrders.stream().filter(order -> {
+            LocalDate completedAt = completionDates.get(purchaseOrderLineKey(order));
+            LocalDate planned = promisedDeliveryDate(order);
+            return completedAt != null && !completedAt.isAfter(planned);
+        }).count();
         return List.of(
-                rateMetric("供应商交付准时率", onTime, deliveryEligible,
-                        "按时完成交付行 ÷ 已完成且具有交期与实际收货日期的订单行 × 100%",
-                        "实际收货日期取 SAP 收货凭证（101）的过账日期（无过账日期时取凭证日期），并与订单交期比较。"),
+                rateMetric("供应商交付准时率", onTime, deliveryEligibleOrders.size(),
+                        "按时完成交付行 ÷ 交期已到的有效订单行 × 100%",
+                        "有效订单不含取消、免费及退货行；以 101−102+123−122 的净收货达到订单数量的最终日期，与供应商确认交期（无确认交期时取订单交期）比较。"),
                 rateMetric("采购订单履约率", fulfilled, activeOrders.size(),
                         "已完成有效订单行 ÷ 全部有效订单行 × 100%",
                         "有效订单行不含已取消行；已完成取完全交付标识或已收货数量达到订单数量。")
@@ -218,15 +222,39 @@ public class PortalServiceImpl implements PortalService {
         result.put("note", note);
         return result;
     }
-    private Map<String, LocalDate> latestReceiptDates(Collection<JsonNode> receipts) {
-        Map<String, LocalDate> dates = new LinkedHashMap<>();
+    private Map<String, LocalDate> netReceiptCompletionDates(Collection<JsonNode> receipts, Map<String, BigDecimal> orderQuantities) {
+        Map<String, List<ReceiptMovement>> movementsByOrderLine = new LinkedHashMap<>();
         for (JsonNode receipt : receipts) {
-            if (!"101".equals(firstNonBlankText(receipt, "GoodsMovementType"))) continue;
+            String orderLineKey = purchaseOrderLineKey(receipt);
+            if (!orderQuantities.containsKey(orderLineKey)) continue;
+            BigDecimal sign = standardReceiptMovementSign(firstNonBlankText(receipt, "GoodsMovementType"));
+            BigDecimal quantity = firstDecimal(receipt, "QuantityInEntryUnit", "Quantity", "EntryQuantity");
             LocalDate postingDate = receiptPostingDate(receipt);
-            if (postingDate == null) continue;
-            dates.merge(purchaseOrderLineKey(receipt), postingDate, (left, right) -> left.isAfter(right) ? left : right);
+            if (sign.signum() == 0 || quantity == null || quantity.signum() <= 0 || postingDate == null) continue;
+            movementsByOrderLine.computeIfAbsent(orderLineKey, ignored -> new ArrayList<>()).add(new ReceiptMovement(postingDate, quantity.multiply(sign)));
         }
-        return dates;
+        Map<String, LocalDate> completionDates = new LinkedHashMap<>();
+        orderQuantities.forEach((orderLineKey, orderedQuantity) -> {
+            BigDecimal netReceived = BigDecimal.ZERO;
+            LocalDate completionDate = null;
+            List<ReceiptMovement> movements = movementsByOrderLine.getOrDefault(orderLineKey, List.of()).stream()
+                    .sorted(Comparator.comparing(ReceiptMovement::postingDate)).toList();
+            for (ReceiptMovement movement : movements) {
+                BigDecimal before = netReceived;
+                netReceived = netReceived.add(movement.quantity());
+                if (before.compareTo(orderedQuantity) < 0 && netReceived.compareTo(orderedQuantity) >= 0) completionDate = movement.postingDate();
+                if (netReceived.compareTo(orderedQuantity) < 0) completionDate = null;
+            }
+            if (completionDate != null) completionDates.put(orderLineKey, completionDate);
+        });
+        return completionDates;
+    }
+    private BigDecimal orderQuantity(JsonNode order) { return firstDecimal(order, "OrderQuantity", "PurchaseOrderQuantity", "RequestedQuantity"); }
+    private BigDecimal standardReceiptMovementSign(String movementType) {
+        return switch (movementType) { case "101", "123" -> BigDecimal.ONE; case "102", "122" -> BigDecimal.ONE.negate(); default -> BigDecimal.ZERO; };
+    }
+    private LocalDate promisedDeliveryDate(JsonNode order) {
+        return parseBusinessDate(firstNonBlankText(order, "ConfirmedDeliveryDate", "SupplierConfirmationDate", "ScheduleLineDeliveryDate", "DeliveryDate", "StatDeliveryDate", "RequestedDeliveryDate"));
     }
     private LocalDate receiptPostingDate(JsonNode receipt) {
         LocalDate date = parseBusinessDate(firstNonBlankText(receipt, "PostingDate", "DocumentDate"));
@@ -834,6 +862,7 @@ public class PortalServiceImpl implements PortalService {
         }
         return "";
     }
+    private record ReceiptMovement(LocalDate postingDate, BigDecimal quantity) { }
     private record ReconciliationLine(String receiptKey, String purchaseOrder, String purchaseOrderItem, String materialDocument, String materialDocumentYear, String materialDocumentItem, String material, String materialDescription, String postingDate, String goodsMovementType, String entryUnit, String purchaseOrderUnit, String companyCode, String documentCurrency, String taxCode, BigDecimal netPriceAmount, BigDecimal netPriceQuantity, BigDecimal receivedQuantity, BigDecimal settledQuantity, BigDecimal actualReturnQuantity, String settlementInvoices, boolean unitConsistent, boolean freeOfCharge) {
         ReconciliationLine withReceivedQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, value, settledQuantity, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }
         ReconciliationLine withSettledQuantity(BigDecimal value) { return new ReconciliationLine(receiptKey, purchaseOrder, purchaseOrderItem, materialDocument, materialDocumentYear, materialDocumentItem, material, materialDescription, postingDate, goodsMovementType, entryUnit, purchaseOrderUnit, companyCode, documentCurrency, taxCode, netPriceAmount, netPriceQuantity, receivedQuantity, value, actualReturnQuantity, settlementInvoices, unitConsistent, freeOfCharge); }
