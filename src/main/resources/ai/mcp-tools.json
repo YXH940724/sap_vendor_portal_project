@@ -2,6 +2,14 @@
   {
     "type": "function",
     "function": {
+      "name": "query_today_todos",
+      "description": "核对当前供应商的今日待办：待交订单为状态非已完成且交期截至今天加 7 天的订单行；可创建 ASN 为上述待交订单中 SupplierConfirmationControlKey 等于 0004、非退货且有可发运量的订单行；可结算收货为结算对账结果中状态为可结算且剩余可结算数量大于零的收货凭证。返回每类单据明细和对应 Portal 操作路径。",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "query_purchase_orders",
       "description": "通过 SAP 采购订单 API 查询当前供应商的订单行、交期、订单数量，以及组合计算后的已收货数量、未清 ASN 数量和可发运量。",
       "parameters": {
