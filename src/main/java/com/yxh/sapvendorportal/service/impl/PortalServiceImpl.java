@@ -77,6 +77,11 @@ public class PortalServiceImpl implements PortalService {
         List<JsonNode> asns = asnsResult.records();
         List<JsonNode> receipts = receiptsResult.records();
         List<JsonNode> invoices = invoicesResult.records();
+        List<ReconciliationLine> settlementLines = reconciliationLines(receipts, invoices);
+        int settlementCandidateCount = (int) settlementLines.stream()
+                .filter(line -> "可结算".equals(line.settlementStatus()))
+                .filter(line -> line.remainingQuantity().signum() > 0)
+                .count();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("vendorId", scope.vendorId());
         result.put("sampleLimit", 100);
@@ -84,7 +89,7 @@ public class PortalServiceImpl implements PortalService {
                 metric("采购订单", orders, "PO", "待确认订单与交期"),
                 metric("发运通知", asns, "ASN", "发运与到货节奏"),
                 metric("收货凭证", receipts, "GR", "已过账收货记录"),
-                metric("待对账发票", invoices, "IV", "结算与发票状态")
+                metric("可结算收货", settlementCandidateCount, "IV", "可创建预制发票的收货行")
         ));
         result.put("orderStatus", distribution(orders, "PurchaseOrderStatus", "OverallStatus", "Status"));
         result.put("asnStatus", distribution(asns, "OverallStatus", "InbDeliveryStatus", "Status"));
@@ -105,7 +110,7 @@ public class PortalServiceImpl implements PortalService {
         requirePermission(scope, "SETTLEMENT_READ");
         if (refresh) vendorDataCache.invalidateVendor(scope.vendorId());
         List<Map<String, Object>> records = reconciliationLines(scope.vendorId(), 100).stream()
-                .filter(line -> line.isSettlementCandidate() && line.receivedQuantity().signum() > 0)
+                .filter(this::isReconciliationPoolLine)
                 .map(ReconciliationLine::view).toList();
         return Map.of("vendorId", scope.vendorId(), "records", records, "count", records.size(), "retrievedAt", Instant.now().toString());
     }
@@ -151,8 +156,11 @@ public class PortalServiceImpl implements PortalService {
     private void requirePermission(VendorScopeResolver.VendorScope scope, String permission) { if (!scope.allows(permission)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前账号未获 " + permission + " 权限。"); }
     private void requireConfigured() { String issue = properties.validationIssue(); if (issue != null) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, issue); }
     private Map<String, Object> metric(String label, Collection<JsonNode> records, String code, String hint) {
+        return metric(label, records.size(), code, hint);
+    }
+    private Map<String, Object> metric(String label, int value, String code, String hint) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("label", label); result.put("value", records.size()); result.put("code", code); result.put("hint", hint); return result;
+        result.put("label", label); result.put("value", value); result.put("code", code); result.put("hint", hint); return result;
     }
     private List<Map<String, Object>> distribution(Collection<JsonNode> records, String... fields) {
         Map<String, Integer> values = new LinkedHashMap<>();
@@ -481,6 +489,9 @@ public class PortalServiceImpl implements PortalService {
     private List<ReconciliationLine> reconciliationLines(String vendorId, int top) {
         List<JsonNode> receipts = load("materialDocuments", vendorId, "", top, List.of());
         List<JsonNode> invoices = load("invoices", vendorId, "", top, List.of());
+        return reconciliationLines(receipts, invoices);
+    }
+    private List<ReconciliationLine> reconciliationLines(List<JsonNode> receipts, List<JsonNode> invoices) {
         Map<String, ReconciliationLine> linesByReceipt = new LinkedHashMap<>();
         for (JsonNode receipt : receipts) {
             ReconciliationLine line = reconciliationLine(receipt);
@@ -518,6 +529,9 @@ public class PortalServiceImpl implements PortalService {
             }
         }
         return new ArrayList<>(linesByReceipt.values());
+    }
+    private boolean isReconciliationPoolLine(ReconciliationLine line) {
+        return line.isSettlementCandidate() && line.receivedQuantity().signum() > 0;
     }
     private ReconciliationLine reconciliationLine(JsonNode receipt) {
         String document = firstText(receipt, "MaterialDocument");

@@ -29,6 +29,33 @@ class PortalServiceImplTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void dashboardUsesTheSameSettlementLogicAsReconciliationForItsFourthMetric() throws Exception {
+        PortalProperties properties = configuredProperties();
+        SapODataClient sapClient = mock(SapODataClient.class);
+        VendorScopeResolver scopeResolver = mock(VendorScopeResolver.class);
+        when(scopeResolver.resolve(any(HttpServletRequest.class))).thenReturn(new VendorScopeResolver.VendorScope("133000006", "test"));
+        when(sapClient.get(any(), eq("133000006"), anyString(), anyString(), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrder".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500002001\"}"));
+            return List.of();
+        });
+        when(sapClient.getByReferences(any(), anyList(), eq("PurchaseOrder"), anyString(), anyInt())).thenAnswer(invocation -> {
+            PortalProperties.Service service = invocation.getArgument(0);
+            if ("PurchaseOrderItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"OrderQuantity\":4,\"PurchaseOrderQuantityUnit\":\"EA\",\"DocumentCurrency\":\"CNY\"}"));
+            if ("A_MaterialDocumentItem".equals(service.getEntity())) return List.of(objectMapper.readTree("{\"MaterialDocument\":\"5000002001\",\"MaterialDocumentYear\":\"2026\",\"MaterialDocumentItem\":\"0001\",\"PurchaseOrder\":\"4500002001\",\"PurchaseOrderItem\":\"00010\",\"Material\":\"MAT-01\",\"GoodsMovementType\":\"101\",\"QuantityInEntryUnit\":4,\"EntryUnit\":\"EA\"}"));
+            return List.of();
+        });
+        PortalServiceImpl service = new PortalServiceImpl(properties, scopeResolver, sapClient, new ODataRecordMapper(objectMapper));
+
+        Map<String, Object> dashboard = service.dashboard(mock(HttpServletRequest.class));
+        Map<String, Object> reconciliation = service.reconciliation(mock(HttpServletRequest.class));
+
+        @SuppressWarnings("unchecked") List<Map<String, Object>> metrics = (List<Map<String, Object>>) dashboard.get("metrics");
+        Map<String, Object> settlementMetric = metrics.stream().filter(metric -> "IV".equals(metric.get("code"))).findFirst().orElseThrow();
+        assertThat(settlementMetric).containsEntry("label", "可结算收货").containsEntry("value", reconciliation.get("count"));
+    }
+
+    @Test
     void returnsPortalAsnNumberAndSapInboundDeliveryAfterCreation() throws Exception {
         PortalProperties properties = configuredProperties();
         SapODataClient sapClient = mock(SapODataClient.class);
